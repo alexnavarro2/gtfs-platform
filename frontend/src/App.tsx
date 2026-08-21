@@ -209,14 +209,15 @@ function TabButton({
 function Topbar({ feedVersion }: { feedVersion?: { feed: { name: string }; versionNumber: number; status: string } }) {
   return (
     <div className="topbar">
+      <img className="brand-logo" src="/imtes-logo.png" alt="IMTES - Instituto de Movilidad y Transporte para el Estado de Sonora" />
       <div className="brand">GTFS Platform</div>
       {feedVersion && (
-        <>
-          <div>{feedVersion.feed.name} · v{feedVersion.versionNumber}</div>
-          <span className="status-pill">{feedVersion.status}</span>
-        </>
+        <div className="brand-sub">
+          {feedVersion.feed.name} · v{feedVersion.versionNumber}
+        </div>
       )}
       <div className="spacer" />
+      {feedVersion && <span className="status-pill">{feedVersion.status}</span>}
     </div>
   );
 }
