@@ -101,7 +101,8 @@ public class GtfsPlatformProperties {
         private String provider = "overpass";
         private String overpassUrl = "https://overpass-api.de/api/interpreter";
         private double searchRadiusMeters = 35;
-        private int timeoutSeconds = 8;
+        private int timeoutSeconds = 4;
+        private String esriApiKey;
 
         public String getProvider() {
             return provider;
@@ -125,6 +126,14 @@ public class GtfsPlatformProperties {
 
         public void setSearchRadiusMeters(double searchRadiusMeters) {
             this.searchRadiusMeters = searchRadiusMeters;
+        }
+
+        public String getEsriApiKey() {
+            return esriApiKey;
+        }
+
+        public void setEsriApiKey(String esriApiKey) {
+            this.esriApiKey = esriApiKey;
         }
 
         public int getTimeoutSeconds() {

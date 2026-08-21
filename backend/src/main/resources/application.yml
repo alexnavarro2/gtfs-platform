@@ -34,6 +34,7 @@ gtfsplatform:
     provider: ${GTFSPLATFORM_GEOCODING_PROVIDER:overpass}
     overpass-url: ${GTFSPLATFORM_OVERPASS_URL:https://overpass-api.de/api/interpreter}
     search-radius-meters: ${GTFSPLATFORM_GEOCODING_RADIUS_M:35}
+    esri-api-key: ${GTFSPLATFORM_ESRI_API_KEY:}
   validator:
     jar-path: ${GTFSPLATFORM_VALIDATOR_JAR:/app/validator/gtfs-validator-cli.jar}
     timeout-seconds: 180
