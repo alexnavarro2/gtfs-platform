@@ -310,12 +310,25 @@ function StopQuickForm({
   onSaved: () => void;
 }) {
   const [name, setName] = useState('');
+  const [nameTouched, setNameTouched] = useState(false);
+  const [suggesting, setSuggesting] = useState(true);
   const [wheelchair, setWheelchair] = useState(false);
   const [busy, setBusy] = useState(false);
   const [nearby, setNearby] = useState<Stop[]>([]);
 
   useEffect(() => {
     api.stops.near(lat, lon, 60).then(setNearby).catch(() => {});
+    setSuggesting(true);
+    api.geocoding
+      .suggestStopName(lat, lon)
+      .then((res) => {
+        // Sección 6: sugerencia por intersección más cercana (estilo Conveyal),
+        // siempre editable — solo se aplica si el usuario no escribió nada todavía.
+        if (res.suggestedName && !nameTouched) setName(res.suggestedName);
+      })
+      .catch(() => {})
+      .finally(() => setSuggesting(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lon]);
 
   async function save() {
@@ -341,8 +354,16 @@ function StopQuickForm({
         <div className="notice WARNING">⚠ Hay {nearby.length} parada(s) a menos de 60 m. Verifica que no sea un duplicado.</div>
       )}
       <div className="field">
-        <label>Nombre</label>
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Hospital General" />
+        <label>Nombre {suggesting && <span style={{ color: '#999' }}>· buscando intersección más cercana…</span>}</label>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => {
+            setNameTouched(true);
+            setName(e.target.value);
+          }}
+          placeholder="Ej. Hospital General"
+        />
       </div>
       <div className="field">
         <label>Lat / Lon</label>

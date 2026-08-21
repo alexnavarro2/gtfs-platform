@@ -148,6 +148,11 @@ export interface RiderCategory {
 export const api = {
   config: () => get<{ mapTileUrl: string; mapAttribution: string; routingProvider: string }>('/config'),
 
+  geocoding: {
+    suggestStopName: (lat: number, lon: number) =>
+      get<{ suggestedName?: string }>(`/geocoding/suggest-stop-name?lat=${lat}&lon=${lon}`),
+  },
+
   feeds: {
     list: () => get<Feed[]>('/feeds'),
     create: (body: { name: string; description?: string }) => post<Feed>('/feeds', body),

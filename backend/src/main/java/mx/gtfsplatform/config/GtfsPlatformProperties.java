@@ -9,6 +9,7 @@ public class GtfsPlatformProperties {
     private final Routing routing = new Routing();
     private final Validator validator = new Validator();
     private final Export export = new Export();
+    private final Geocoding geocoding = new Geocoding();
 
     public Map getMap() {
         return map;
@@ -24,6 +25,10 @@ public class GtfsPlatformProperties {
 
     public Export getExport() {
         return export;
+    }
+
+    public Geocoding getGeocoding() {
+        return geocoding;
     }
 
     public static class Map {
@@ -89,6 +94,45 @@ public class GtfsPlatformProperties {
 
         public void setOutputDir(String outputDir) {
             this.outputDir = outputDir;
+        }
+    }
+
+    public static class Geocoding {
+        private String provider = "overpass";
+        private String overpassUrl = "https://overpass-api.de/api/interpreter";
+        private double searchRadiusMeters = 35;
+        private int timeoutSeconds = 8;
+
+        public String getProvider() {
+            return provider;
+        }
+
+        public void setProvider(String provider) {
+            this.provider = provider;
+        }
+
+        public String getOverpassUrl() {
+            return overpassUrl;
+        }
+
+        public void setOverpassUrl(String overpassUrl) {
+            this.overpassUrl = overpassUrl;
+        }
+
+        public double getSearchRadiusMeters() {
+            return searchRadiusMeters;
+        }
+
+        public void setSearchRadiusMeters(double searchRadiusMeters) {
+            this.searchRadiusMeters = searchRadiusMeters;
+        }
+
+        public int getTimeoutSeconds() {
+            return timeoutSeconds;
+        }
+
+        public void setTimeoutSeconds(int timeoutSeconds) {
+            this.timeoutSeconds = timeoutSeconds;
         }
     }
 }
