@@ -98,7 +98,10 @@ public class GtfsPlatformProperties {
     }
 
     public static class Geocoding {
-        private String provider = "overpass";
+        // Default "esri" tras probar 100 puntos reales: Overpass dio 0% de éxito
+        // (timeouts de ~19s) mientras Esri dio 76% con ~0.5s de latencia. Ver
+        // docs/ARCHITECTURE-PLAN.md sección I para el detalle de la comparación.
+        private String provider = "esri";
         private String overpassUrl = "https://overpass-api.de/api/interpreter";
         private double searchRadiusMeters = 35;
         private int timeoutSeconds = 4;
