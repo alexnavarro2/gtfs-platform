@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: gtfsplatform-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gtfsplatform}
+      POSTGRES_USER: ${POSTGRES_USER:-gtfsplatform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gtfsplatform}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - gtfsplatform-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gtfsplatform} -d ${POSTGRES_DB:-gtfsplatform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: gtfsplatform-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-gtfsplatform}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-gtfsplatform}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-gtfsplatform}
+      GTFSPLATFORM_MAP_TILE_URL: ${GTFSPLATFORM_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+      GTFSPLATFORM_ROUTING_PROVIDER: ${GTFSPLATFORM_ROUTING_PROVIDER:-manual}
+      GTFSPLATFORM_OSRM_URL: ${GTFSPLATFORM_OSRM_URL:-}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - gtfsplatform-exports:/data/exports
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080/api/v1}
+        VITE_MAP_TILE_URL: ${GTFSPLATFORM_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+    container_name: gtfsplatform-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+
+volumes:
+  gtfsplatform-db-data:
+  gtfsplatform-exports:

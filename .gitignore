@@ -1,0 +1,17 @@
+.env
+.DS_Store
+
+# backend
+backend/target/
+backend/src/main/resources/validator/*.jar
+*.class
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ide
+.idea/
+.vscode/
+*.iml

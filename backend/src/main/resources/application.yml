@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: gtfs-platform-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/gtfsplatform}
+    username: ${SPRING_DATASOURCE_USERNAME:gtfsplatform}
+    password: ${SPRING_DATASOURCE_PASSWORD:gtfsplatform}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
+        format_sql: false
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
+  flyway:
+    locations: ${GTFSPLATFORM_FLYWAY_LOCATIONS:filesystem:/app/database/migrations}
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+
+gtfsplatform:
+  map:
+    tile-url: ${GTFSPLATFORM_MAP_TILE_URL:https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+  routing:
+    provider: ${GTFSPLATFORM_ROUTING_PROVIDER:manual}
+    osrm-url: ${GTFSPLATFORM_OSRM_URL:}
+  validator:
+    jar-path: ${GTFSPLATFORM_VALIDATOR_JAR:/app/validator/gtfs-validator-cli.jar}
+    timeout-seconds: 180
+  export:
+    output-dir: ${GTFSPLATFORM_EXPORT_DIR:/data/exports}
+
+springdoc:
+  api-docs:
+    path: /api/v1/openapi
+  swagger-ui:
+    path: /api/v1/docs
