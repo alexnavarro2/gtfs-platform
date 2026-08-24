@@ -79,6 +79,9 @@ export interface Agency {
   agencyUrl: string;
   agencyTimezone: string;
   agencyLang?: string;
+  agencyPhone?: string;
+  agencyFareUrl?: string;
+  agencyEmail?: string;
 }
 
 export interface Stop {
@@ -234,6 +237,8 @@ export const api = {
     list: (feedVersionId: string) => get<Agency[]>(`/feed-versions/${feedVersionId}/agencies`),
     create: (feedVersionId: string, body: Partial<Agency>) =>
       post<Agency>(`/feed-versions/${feedVersionId}/agencies`, body),
+    update: (id: string, body: Partial<Agency>) => put<Agency>(`/agencies/${id}`, body),
+    remove: (id: string) => del<void>(`/agencies/${id}`),
   },
   stops: {
     list: (feedVersionId: string) => get<Stop[]>(`/feed-versions/${feedVersionId}/stops`),

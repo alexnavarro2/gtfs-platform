@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getAuthToken, setUnauthorizedHandler } from './api/client';
-import type { AdminUser, Feed, Route, Stop, ValidationSummary } from './api/client';
+import type { AdminUser, Agency, Feed, Route, Stop, ValidationSummary } from './api/client';
 import { useAppStore } from './store/useAppStore';
 import { MapView } from './map/MapView';
 
-type Tab = 'stops' | 'routes' | 'calendars' | 'fares' | 'validation' | 'admin';
+type Tab = 'agency' | 'stops' | 'routes' | 'calendars' | 'fares' | 'validation' | 'admin';
 
 export default function App() {
   const authUser = useAppStore((s) => s.authUser);
@@ -267,6 +267,7 @@ function Shell() {
       <div className="main-area">
         <div className="sidebar">
           <div className="tabs">
+            <TabButton current={tab} value="agency" onClick={setTab} label="Agencia" />
             <TabButton current={tab} value="stops" onClick={setTab} label="Paradas" />
             <TabButton current={tab} value="routes" onClick={setTab} label="Rutas" />
             <TabButton current={tab} value="calendars" onClick={setTab} label="Calendarios" />
@@ -277,6 +278,7 @@ function Shell() {
             )}
           </div>
           <div className="tab-content">
+            {tab === 'agency' && <AgencyPanel feedVersionId={feedVersionId} />}
             {tab === 'stops' && <StopsPanel feedVersionId={feedVersionId} />}
             {tab === 'routes' && <RoutesPanel feedVersionId={feedVersionId} agencyId={agencyId!} />}
             {tab === 'calendars' && <CalendarsPanel feedVersionId={feedVersionId} />}
@@ -341,6 +343,136 @@ function AgencySetup({ feedVersionId }: { feedVersionId: string }) {
         {error && <div className="notice ERROR">{error}</div>}
         <button className="btn block" disabled={busy} onClick={create}>
           {busy ? 'Creando…' : 'Crear agencia y continuar'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Agencia: editar los datos de agency.txt después de la creación inicial
+// (AgencySetup arriba solo se muestra una vez, al crear el feed).
+// ---------------------------------------------------------------------------
+function AgencyPanel({ feedVersionId }: { feedVersionId: string }) {
+  const queryClient = useQueryClient();
+  const agenciesQuery = useQuery({ queryKey: ['agencies', feedVersionId], queryFn: () => api.agencies.list(feedVersionId) });
+  const [showNewForm, setShowNewForm] = useState(false);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['agencies', feedVersionId] });
+
+  return (
+    <div>
+      <div className="panel-section">
+        <h3>Agencias ({agenciesQuery.data?.length || 0})</h3>
+        {(agenciesQuery.data || []).map((a) => (
+          <AgencyForm key={a.id} agency={a} onSaved={invalidate} />
+        ))}
+      </div>
+      <div className="panel-section">
+        {showNewForm ? (
+          <AgencyForm
+            feedVersionId={feedVersionId}
+            onSaved={() => {
+              invalidate();
+              setShowNewForm(false);
+            }}
+            onCancel={() => setShowNewForm(false)}
+          />
+        ) : (
+          <button className="btn secondary block" onClick={() => setShowNewForm(true)}>
+            + Agregar otra agencia
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AgencyForm({
+  agency,
+  feedVersionId,
+  onSaved,
+  onCancel,
+}: {
+  agency?: Agency;
+  feedVersionId?: string;
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
+  const [form, setForm] = useState({
+    agencyName: agency?.agencyName || '',
+    agencyUrl: agency?.agencyUrl || 'https://',
+    agencyTimezone: agency?.agencyTimezone || 'America/Hermosillo',
+    agencyLang: agency?.agencyLang || 'es',
+    agencyPhone: agency?.agencyPhone || '',
+    agencyFareUrl: agency?.agencyFareUrl || '',
+    agencyEmail: agency?.agencyEmail || '',
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      if (agency) {
+        await api.agencies.update(agency.id, form);
+      } else if (feedVersionId) {
+        await api.agencies.create(feedVersionId, form);
+      }
+      setSaved(true);
+      onSaved();
+    } catch (e: any) {
+      setError(e.message || 'Error guardando la agencia');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+      <div className="field">
+        <label>Nombre</label>
+        <input value={form.agencyName} onChange={(e) => setForm({ ...form, agencyName: e.target.value })} />
+      </div>
+      <div className="field">
+        <label>Sitio web</label>
+        <input value={form.agencyUrl} onChange={(e) => setForm({ ...form, agencyUrl: e.target.value })} />
+      </div>
+      <div className="field-row">
+        <div className="field">
+          <label>Zona horaria</label>
+          <input value={form.agencyTimezone} onChange={(e) => setForm({ ...form, agencyTimezone: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Idioma</label>
+          <input value={form.agencyLang} onChange={(e) => setForm({ ...form, agencyLang: e.target.value })} />
+        </div>
+      </div>
+      <div className="field">
+        <label>Teléfono</label>
+        <input value={form.agencyPhone} onChange={(e) => setForm({ ...form, agencyPhone: e.target.value })} />
+      </div>
+      <div className="field">
+        <label>Correo</label>
+        <input value={form.agencyEmail} onChange={(e) => setForm({ ...form, agencyEmail: e.target.value })} />
+      </div>
+      <div className="field">
+        <label>URL de tarifas</label>
+        <input value={form.agencyFareUrl} onChange={(e) => setForm({ ...form, agencyFareUrl: e.target.value })} />
+      </div>
+      {error && <div className="notice ERROR">{error}</div>}
+      {saved && !error && <div className="notice INFO">✓ Guardado</div>}
+      <div className="btn-row">
+        {onCancel && (
+          <button className="btn secondary" onClick={onCancel}>
+            Cancelar
+          </button>
+        )}
+        <button className="btn" disabled={busy || !form.agencyName.trim()} onClick={save}>
+          {busy ? 'Guardando…' : agency ? 'Guardar cambios' : 'Crear agencia'}
         </button>
       </div>
     </div>

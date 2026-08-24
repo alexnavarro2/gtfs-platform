@@ -54,16 +54,29 @@ public class AgencyController {
     public Agency update(@PathVariable UUID id, @RequestBody Agency update) {
         Agency existing = agencyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Agency not found: " + id));
-        existing.setGtfsId(update.getGtfsId());
-        existing.setAgencyName(update.getAgencyName());
-        existing.setAgencyUrl(update.getAgencyUrl());
-        existing.setAgencyTimezone(update.getAgencyTimezone());
+        // gtfs_id es la clave de negocio, asignada una sola vez al crear (ver
+        // GtfsIdGenerator) — nunca se debe regenerar ni aceptar null desde este
+        // endpoint. Antes se sobreescribía sin chequeo con lo que mandara el
+        // cliente: un formulario de edición que no incluyera gtfsId en el body
+        // (como el panel de Agencia) lo dejaba en NULL y violaba la columna
+        // NOT NULL — bug real detectado probando el formulario en el navegador.
+        if (update.getGtfsId() != null && !update.getGtfsId().isBlank()) {
+            existing.setGtfsId(update.getGtfsId());
+        }
+        if (update.getAgencyName() != null) {
+            existing.setAgencyName(update.getAgencyName());
+        }
+        if (update.getAgencyUrl() != null) {
+            existing.setAgencyUrl(update.getAgencyUrl());
+        }
+        if (update.getAgencyTimezone() != null) {
+            existing.setAgencyTimezone(update.getAgencyTimezone());
+        }
         existing.setAgencyLang(update.getAgencyLang());
         existing.setAgencyPhone(update.getAgencyPhone());
         existing.setAgencyFareUrl(update.getAgencyFareUrl());
         existing.setAgencyEmail(update.getAgencyEmail());
         existing.setUpdatedAt(OffsetDateTime.now());
-        existing.setUpdatedBy(update.getUpdatedBy());
         return agencyRepository.save(existing);
     }
 
