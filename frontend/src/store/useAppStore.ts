@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { setAuthToken, type AuthUser } from '../api/client';
+import { queryClient } from '../api/queryClient';
 
 export type MapTool = 'none' | 'add-stop' | 'draw-shape' | 'add-pattern-stop';
 
@@ -38,10 +39,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   authUser: null,
   setAuth: (user, token) => {
     setAuthToken(token);
+    // React Query cachea por queryKey (ej. ['feeds']) sin distinguir usuario;
+    // sin limpiar aquí, un login/registro después de otra sesión en la misma
+    // pestaña podía leer por un instante la caché del usuario anterior — antes
+    // de que la nueva consulta (ya con el token correcto) resolviera — y
+    // Bootstrap auto-seleccionaba el feed de otra persona. Debe ir en esta
+    // función síncrona, no en un useEffect: React Query lee la caché de forma
+    // síncrona en el primer render de useQuery, antes de que corra cualquier
+    // efecto.
+    queryClient.clear();
     set({ authUser: user });
   },
   clearAuth: () => {
     setAuthToken(null);
+    queryClient.clear();
     set({
       authUser: null,
       feedId: null,

@@ -35,6 +35,12 @@ public class AppUser {
     @Column(name = "display_name", nullable = false)
     private String displayName;
 
+    @Column(name = "institution")
+    private String institution;
+
+    @Column(name = "job_title")
+    private String jobTitle;
+
     @Column(name = "role", nullable = false)
     private String role;
 

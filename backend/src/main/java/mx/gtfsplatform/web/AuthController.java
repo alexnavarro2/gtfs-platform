@@ -38,10 +38,16 @@ public class AuthController {
         if (appUserRepository.findByEmail(email).isPresent()) {
             throw new EmailAlreadyRegisteredException("Ya existe una cuenta con ese correo");
         }
+        // El primer usuario de una instalación nueva no tiene quién le dé permisos
+        // de ADMIN desde el panel — se auto-asigna para poder arrancar el panel de
+        // administración; todos los siguientes entran como EDITOR.
+        String role = appUserRepository.count() == 0 ? "ADMIN" : "EDITOR";
         AppUser user = AppUser.builder()
                 .email(email)
                 .displayName(request.displayName().trim())
-                .role("EDITOR")
+                .institution(request.institution().trim())
+                .jobTitle(request.jobTitle().trim())
+                .role(role)
                 .passwordHash(passwordEncoder.encode(request.password()))
                 .createdAt(OffsetDateTime.now())
                 .build();
@@ -67,16 +73,24 @@ public class AuthController {
     public record RegisterRequest(
             @NotBlank @Email String email,
             @NotBlank @Size(min = 8, message = "La contraseña debe tener al menos 8 caracteres") String password,
-            @NotBlank String displayName) {
+            @NotBlank String displayName,
+            @NotBlank String institution,
+            @NotBlank String jobTitle) {
     }
 
     public record LoginRequest(@NotBlank @Email String email, @NotBlank String password) {
     }
 
-    public record UserView(String id, String email, String displayName, String role) {
+    public record UserView(
+            String id, String email, String displayName, String institution, String jobTitle, String role) {
         static UserView of(AppUser user) {
             return new UserView(
-                    user.getId().toString(), user.getEmail(), user.getDisplayName(), user.getRole());
+                    user.getId().toString(),
+                    user.getEmail(),
+                    user.getDisplayName(),
+                    user.getInstitution(),
+                    user.getJobTitle(),
+                    user.getRole());
         }
     }
 

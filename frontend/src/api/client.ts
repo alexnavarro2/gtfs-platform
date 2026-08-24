@@ -175,6 +175,8 @@ export interface AuthUser {
   id: string;
   email: string;
   displayName: string;
+  institution?: string;
+  jobTitle?: string;
   role: 'ADMIN' | 'EDITOR' | 'VIEWER';
 }
 
@@ -183,12 +185,28 @@ export interface AuthResponse {
   user: AuthUser;
 }
 
+export interface AdminUser {
+  id: string;
+  email: string;
+  displayName: string;
+  institution?: string;
+  jobTitle?: string;
+  role: 'ADMIN' | 'EDITOR' | 'VIEWER';
+  createdAt: string;
+  feedCount: number;
+}
+
 export const api = {
   config: () => get<{ mapTileUrl: string; mapAttribution: string; routingProvider: string }>('/config'),
 
   auth: {
-    register: (body: { email: string; password: string; displayName: string }) =>
-      post<AuthResponse>('/auth/register', body),
+    register: (body: {
+      email: string;
+      password: string;
+      displayName: string;
+      institution: string;
+      jobTitle: string;
+    }) => post<AuthResponse>('/auth/register', body),
     login: (body: { email: string; password: string }) => post<AuthResponse>('/auth/login', body),
     me: () => get<AuthUser>('/auth/me'),
   },
@@ -295,6 +313,13 @@ export const api = {
       const formData = new FormData();
       formData.append('file', file);
       return request(`/feeds/${feedId}/import`, { method: 'POST', body: formData as any });
+    },
+  },
+  admin: {
+    users: {
+      list: () => get<AdminUser[]>('/admin/users'),
+      updateRole: (userId: string, role: 'ADMIN' | 'EDITOR' | 'VIEWER') =>
+        put<AdminUser>(`/admin/users/${userId}/role`, { role }),
     },
   },
 };

@@ -149,6 +149,15 @@ h1, h2, h3, h4, .mont { font-family: 'Montserrat', sans-serif; }
 }
 .list-item:hover { border-color: var(--vino); }
 .list-item.active { border-color: var(--vino); background: var(--azul-claro, #faf0f5); }
+
+.admin-user-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.admin-user-name { font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: 13px; }
+.admin-user-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .route-chip {
   display: inline-flex;
   align-items: center;

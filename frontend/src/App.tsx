@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getAuthToken, setUnauthorizedHandler } from './api/client';
-import type { Feed, Route, Stop, ValidationSummary } from './api/client';
+import type { AdminUser, Feed, Route, Stop, ValidationSummary } from './api/client';
 import { useAppStore } from './store/useAppStore';
 import { MapView } from './map/MapView';
 
-type Tab = 'stops' | 'routes' | 'calendars' | 'fares' | 'validation';
+type Tab = 'stops' | 'routes' | 'calendars' | 'fares' | 'validation' | 'admin';
 
 export default function App() {
   const authUser = useAppStore((s) => s.authUser);
@@ -56,6 +56,8 @@ function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [institution, setInstitution] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +68,7 @@ function AuthScreen() {
       const res =
         mode === 'login'
           ? await api.auth.login({ email, password })
-          : await api.auth.register({ email, password, displayName });
+          : await api.auth.register({ email, password, displayName, institution, jobTitle });
       setAuth(res.user, res.token);
     } catch (e: any) {
       setError(e.message || 'Error de autenticación');
@@ -74,6 +76,8 @@ function AuthScreen() {
       setBusy(false);
     }
   }
+
+  const registerIncomplete = !displayName.trim() || !institution.trim() || !jobTitle.trim();
 
   return (
     <div className="bootstrap-screen">
@@ -83,10 +87,20 @@ function AuthScreen() {
           {mode === 'login' ? 'Inicia sesión para administrar tus feeds.' : 'Crea tu cuenta para empezar a crear feeds GTFS.'}
         </p>
         {mode === 'register' && (
-          <div className="field">
-            <label>Nombre</label>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-          </div>
+          <>
+            <div className="field">
+              <label>Nombre</label>
+              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Institución</label>
+              <input value={institution} onChange={(e) => setInstitution(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Puesto</label>
+              <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
+            </div>
+          </>
         )}
         <div className="field">
           <label>Correo</label>
@@ -99,7 +113,7 @@ function AuthScreen() {
         {error && <div className="notice ERROR">{error}</div>}
         <button
           className="btn block"
-          disabled={busy || !email.trim() || !password.trim() || (mode === 'register' && !displayName.trim())}
+          disabled={busy || !email.trim() || !password.trim() || (mode === 'register' && registerIncomplete)}
           onClick={submit}
         >
           {busy ? 'Un momento…' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
@@ -258,6 +272,9 @@ function Shell() {
             <TabButton current={tab} value="calendars" onClick={setTab} label="Calendarios" />
             <TabButton current={tab} value="fares" onClick={setTab} label="Tarifas" />
             <TabButton current={tab} value="validation" onClick={setTab} label="Validación" />
+            {authUser?.role === 'ADMIN' && (
+              <TabButton current={tab} value="admin" onClick={setTab} label="Administración" />
+            )}
           </div>
           <div className="tab-content">
             {tab === 'stops' && <StopsPanel feedVersionId={feedVersionId} />}
@@ -265,6 +282,7 @@ function Shell() {
             {tab === 'calendars' && <CalendarsPanel feedVersionId={feedVersionId} />}
             {tab === 'fares' && <FaresPanel feedVersionId={feedVersionId} />}
             {tab === 'validation' && <ValidationPanel feedVersionId={feedVersionId} />}
+            {tab === 'admin' && authUser?.role === 'ADMIN' && <AdminPanel currentUserId={authUser.id} />}
           </div>
         </div>
         <div className="map-area">
@@ -1178,6 +1196,61 @@ function ValidationPanel({ feedVersionId }: { feedVersionId: string }) {
             ))}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Panel de administración: usuarios registrados y su rol/permiso (solo ADMIN)
+// ---------------------------------------------------------------------------
+function AdminPanel({ currentUserId }: { currentUserId: string }) {
+  const queryClient = useQueryClient();
+  const usersQuery = useQuery({ queryKey: ['adminUsers'], queryFn: api.admin.users.list });
+
+  const updateRole = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: AdminUser['role'] }) =>
+      api.admin.users.updateRole(userId, role),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminUsers'] }),
+  });
+
+  return (
+    <div>
+      <div className="panel-section">
+        <h3>Usuarios registrados ({usersQuery.data?.length || 0})</h3>
+        {usersQuery.isLoading && <div className="hint">Cargando…</div>}
+        {updateRole.isError && <div className="notice ERROR">{(updateRole.error as any)?.message}</div>}
+        {(usersQuery.data || []).map((u) => (
+          <div key={u.id} className="admin-user-card">
+            <div className="admin-user-name">
+              {u.displayName} {u.id === currentUserId && <span className="hint">(tú)</span>}
+            </div>
+            <div className="admin-user-meta">{u.email}</div>
+            {(u.institution || u.jobTitle) && (
+              <div className="admin-user-meta">
+                {u.jobTitle}
+                {u.jobTitle && u.institution ? ' · ' : ''}
+                {u.institution}
+              </div>
+            )}
+            <div className="admin-user-meta">
+              {u.feedCount} feed{u.feedCount === 1 ? '' : 's'} · registrado{' '}
+              {new Date(u.createdAt).toLocaleDateString('es-MX')}
+            </div>
+            <div className="field" style={{ marginTop: 6, marginBottom: 0 }}>
+              <label>Rol</label>
+              <select
+                value={u.role}
+                disabled={u.id === currentUserId || updateRole.isPending}
+                onChange={(e) => updateRole.mutate({ userId: u.id, role: e.target.value as AdminUser['role'] })}
+              >
+                <option value="ADMIN">ADMIN</option>
+                <option value="EDITOR">EDITOR</option>
+                <option value="VIEWER">VIEWER</option>
+              </select>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
