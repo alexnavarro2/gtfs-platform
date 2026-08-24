@@ -241,6 +241,7 @@ function MapArea({
   const addDraftShapePoint = useAppStore((s) => s.addDraftShapePoint);
   const toggleDraftPatternStop = useAppStore((s) => s.toggleDraftPatternStop);
   const draftPatternStopIds = useAppStore((s) => s.draftPatternStopIds);
+  const draftShapePoints = useAppStore((s) => s.draftShapePoints);
   const routedPreviewPoints = useAppStore((s) => s.routedPreviewPoints);
   const routedPreviewInfo = useAppStore((s) => s.routedPreviewInfo);
   const setRoutedPreview = useAppStore((s) => s.setRoutedPreview);
@@ -259,19 +260,21 @@ function MapArea({
     enabled: !!activePatternId,
   });
 
-  // Al ir uniendo paradas existentes (Modo 1/3, sección 9): cada vez que la
-  // selección cambia, se vuelve a rutear por la red vial automáticamente. La
+  // Modo 1/3 (sección 9): tanto al unir paradas existentes como al dibujar por
+  // puntos de control, cada tramo se rutea automáticamente por la red vial. La
   // geometría es solo una propuesta — nunca se guarda hasta "Guardar recorrido".
   useEffect(() => {
-    if (mapTool !== 'add-pattern-stop' || draftPatternStopIds.length < 2 || !stopsQuery.data) {
-      setRoutedPreview([], null);
-      return;
+    let waypoints: { lat: number; lon: number }[] = [];
+    if (mapTool === 'add-pattern-stop' && stopsQuery.data) {
+      const byId = new Map(stopsQuery.data.map((s) => [s.id, s]));
+      waypoints = draftPatternStopIds
+        .map((id) => byId.get(id))
+        .filter((s): s is Stop => !!s)
+        .map((s) => ({ lat: s.stopLat, lon: s.stopLon }));
+    } else if (mapTool === 'draw-shape') {
+      waypoints = draftShapePoints;
     }
-    const byId = new Map(stopsQuery.data.map((s) => [s.id, s]));
-    const waypoints = draftPatternStopIds
-      .map((id) => byId.get(id))
-      .filter((s): s is Stop => !!s)
-      .map((s) => ({ lat: s.stopLat, lon: s.stopLon }));
+
     if (waypoints.length < 2) {
       setRoutedPreview([], null);
       return;
@@ -297,7 +300,7 @@ function MapArea({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapTool, draftPatternStopIds, stopsQuery.data]);
+  }, [mapTool, draftPatternStopIds, draftShapePoints, stopsQuery.data]);
 
   function handleMapClick(lat: number, lon: number) {
     if (mapTool === 'add-stop') {
@@ -326,7 +329,8 @@ function MapArea({
         onStopClick={handleStopClick}
       />
       <div className="attribution-badge">{attribution || '© OpenStreetMap contributors'}</div>
-      {mapTool === 'add-pattern-stop' && draftPatternStopIds.length >= 2 && (
+      {((mapTool === 'add-pattern-stop' && draftPatternStopIds.length >= 2) ||
+        (mapTool === 'draw-shape' && draftShapePoints.length >= 2)) && (
         <div style={{ position: 'absolute', top: 16, left: 16, background: 'white', borderRadius: 8, padding: '8px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', zIndex: 10, fontSize: 12 }}>
           {routing
             ? 'Ruteando por la red vial…'
@@ -595,7 +599,11 @@ function PatternEditor({ patternId }: { patternId: string }) {
   const patternStopsQuery = useQuery({ queryKey: ['patternStops', patternId], queryFn: () => api.patterns.getStops(patternId) });
 
   const saveShape = useMutation({
-    mutationFn: () => api.patterns.replaceShapePoints(patternId, draftShapePoints),
+    mutationFn: () =>
+      api.patterns.replaceShapePoints(
+        patternId,
+        routedPreviewPoints.length >= 2 ? routedPreviewPoints : draftShapePoints,
+      ),
     onSuccess: () => {
       clearDraftShapePoints();
       setMapTool('none');
@@ -640,7 +648,19 @@ function PatternEditor({ patternId }: { patternId: string }) {
 
       {mapTool === 'draw-shape' && (
         <div>
-          <p className="hint">Haz clic en el mapa para agregar vértices del recorrido ({draftShapePoints.length} puntos).</p>
+          <p className="hint">
+            Haz clic en el mapa para agregar puntos de control ({draftShapePoints.length}). Cada tramo entre dos
+            puntos se rutea automáticamente por la red vial.
+          </p>
+          {draftShapePoints.length >= 2 && (
+            <p className="hint" style={{ color: routedPreviewInfo?.routed ? 'var(--success)' : 'var(--warning)' }}>
+              {routedPreviewInfo?.routed
+                ? `✓ Ruteado por calles (${routedPreviewInfo.provider})`
+                : routedPreviewPoints.length > 0
+                  ? '⚠ Sin ruteo disponible — se guardará una línea recta entre puntos'
+                  : 'Calculando ruta…'}
+            </p>
+          )}
           <div className="btn-row">
             <button className="btn secondary" onClick={clearDraftShapePoints}>Limpiar</button>
             <button className="btn" disabled={draftShapePoints.length < 2 || saveShape.isPending} onClick={() => saveShape.mutate()}>

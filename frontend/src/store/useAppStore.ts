@@ -56,7 +56,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveCalendar: (calendarId) => set({ activeCalendarId: calendarId }),
   setMapTool: (tool) => set({ mapTool: tool }),
   addDraftShapePoint: (pt) => set({ draftShapePoints: [...get().draftShapePoints, pt] }),
-  clearDraftShapePoints: () => set({ draftShapePoints: [] }),
+  clearDraftShapePoints: () => set({ draftShapePoints: [], routedPreviewPoints: [], routedPreviewInfo: null }),
   toggleDraftPatternStop: (stopId) => {
     const current = get().draftPatternStopIds;
     set({
