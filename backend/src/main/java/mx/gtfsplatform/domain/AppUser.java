@@ -1,5 +1,6 @@
 package mx.gtfsplatform.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -36,6 +37,10 @@ public class AppUser {
 
     @Column(name = "role", nullable = false)
     private String role;
+
+    @JsonIgnore
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;

@@ -1,8 +1,12 @@
 import { create } from 'zustand';
+import { setAuthToken, type AuthUser } from '../api/client';
 
 export type MapTool = 'none' | 'add-stop' | 'draw-shape' | 'add-pattern-stop';
 
 interface AppState {
+  authUser: AuthUser | null;
+  setAuth: (user: AuthUser, token: string) => void;
+  clearAuth: () => void;
   feedId: string | null;
   feedVersionId: string | null;
   agencyId: string | null;
@@ -31,6 +35,28 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
+  authUser: null,
+  setAuth: (user, token) => {
+    setAuthToken(token);
+    set({ authUser: user });
+  },
+  clearAuth: () => {
+    setAuthToken(null);
+    set({
+      authUser: null,
+      feedId: null,
+      feedVersionId: null,
+      agencyId: null,
+      activeRouteId: null,
+      activePatternId: null,
+      activeCalendarId: null,
+      mapTool: 'none',
+      draftShapePoints: [],
+      draftPatternStopIds: [],
+      routedPreviewPoints: [],
+      routedPreviewInfo: null,
+    });
+  },
   feedId: null,
   feedVersionId: null,
   agencyId: null,

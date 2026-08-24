@@ -1,13 +1,39 @@
 const BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
 
+const TOKEN_STORAGE_KEY = 'gtfsplatform.authToken';
+let authToken: string | null = localStorage.getItem(TOKEN_STORAGE_KEY);
+let onUnauthorized: (() => void) | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  else localStorage.removeItem(TOKEN_STORAGE_KEY);
+}
+
+export function getAuthToken() {
+  return authToken;
+}
+
+// Shell la registra una vez al montar para poder limpiar la sesión y mandar al
+// login cuando el token expira o el servidor lo rechaza (401).
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+      ...(typeof options.body === 'string' && !isFormData ? { 'Content-Type': 'application/json' } : {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...(options.headers || {}),
     },
   });
+  if (res.status === 401) {
+    setAuthToken(null);
+    onUnauthorized?.();
+  }
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     try {
@@ -145,8 +171,27 @@ export interface RiderCategory {
   isDefaultFareCategory?: number;
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: 'ADMIN' | 'EDITOR' | 'VIEWER';
+}
+
+export interface AuthResponse {
+  token: string;
+  user: AuthUser;
+}
+
 export const api = {
   config: () => get<{ mapTileUrl: string; mapAttribution: string; routingProvider: string }>('/config'),
+
+  auth: {
+    register: (body: { email: string; password: string; displayName: string }) =>
+      post<AuthResponse>('/auth/register', body),
+    login: (body: { email: string; password: string }) => post<AuthResponse>('/auth/login', body),
+    me: () => get<AuthUser>('/auth/me'),
+  },
 
   geocoding: {
     suggestStopName: (lat: number, lon: number) =>
@@ -226,7 +271,21 @@ export const api = {
   gtfs: {
     export: (feedVersionId: string) =>
       post<{ sha256: string; sizeBytes: number; generatedAt: string }>(`/feed-versions/${feedVersionId}/export`),
-    downloadUrl: (feedVersionId: string) => `${BASE_URL}/feed-versions/${feedVersionId}/export/download`,
+    // Ya no es un <a href> plano: la descarga ahora requiere el header
+    // Authorization, así que se trae como blob y se dispara desde JS.
+    download: async (feedVersionId: string) => {
+      const res = await fetch(`${BASE_URL}/feed-versions/${feedVersionId}/export/download`, {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'gtfs.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+    },
     validate: (feedVersionId: string, official: boolean) =>
       post<ValidationSummary>(`/feed-versions/${feedVersionId}/validate?official=${official}`),
     publish: (feedVersionId: string) => post<FeedVersion>(`/feed-versions/${feedVersionId}/publish`),

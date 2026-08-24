@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from './api/client';
+import { api, getAuthToken, setUnauthorizedHandler } from './api/client';
 import type { Feed, Route, Stop, ValidationSummary } from './api/client';
 import { useAppStore } from './store/useAppStore';
 import { MapView } from './map/MapView';
@@ -8,9 +8,115 @@ import { MapView } from './map/MapView';
 type Tab = 'stops' | 'routes' | 'calendars' | 'fares' | 'validation';
 
 export default function App() {
+  const authUser = useAppStore((s) => s.authUser);
+  const setAuth = useAppStore((s) => s.setAuth);
+  const clearAuth = useAppStore((s) => s.clearAuth);
   const feedVersionId = useAppStore((s) => s.feedVersionId);
+  // El token persiste en localStorage entre recargas; se valida contra /auth/me
+  // una vez al montar para restaurar la sesión (o limpiarla si ya expiró).
+  const [checkingSession, setCheckingSession] = useState(!!getAuthToken() && !authUser);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => clearAuth());
+    return () => setUnauthorizedHandler(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!getAuthToken() || authUser) {
+      setCheckingSession(false);
+      return;
+    }
+    api.auth
+      .me()
+      .then((user) => setAuth(user, getAuthToken()!))
+      .catch(() => clearAuth())
+      .finally(() => setCheckingSession(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (checkingSession) {
+    return (
+      <div className="bootstrap-screen">
+        <div className="bootstrap-card">Cargando sesión…</div>
+      </div>
+    );
+  }
+  if (!authUser) return <AuthScreen />;
   if (!feedVersionId) return <Bootstrap />;
   return <Shell />;
+}
+
+// ---------------------------------------------------------------------------
+// AuthScreen: login / registro (cada usuario administra sus propios feeds)
+// ---------------------------------------------------------------------------
+function AuthScreen() {
+  const setAuth = useAppStore((s) => s.setAuth);
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res =
+        mode === 'login'
+          ? await api.auth.login({ email, password })
+          : await api.auth.register({ email, password, displayName });
+      setAuth(res.user, res.token);
+    } catch (e: any) {
+      setError(e.message || 'Error de autenticación');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bootstrap-screen">
+      <div className="bootstrap-card">
+        <h2>GTFS Platform</h2>
+        <p className="hint">
+          {mode === 'login' ? 'Inicia sesión para administrar tus feeds.' : 'Crea tu cuenta para empezar a crear feeds GTFS.'}
+        </p>
+        {mode === 'register' && (
+          <div className="field">
+            <label>Nombre</label>
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+          </div>
+        )}
+        <div className="field">
+          <label>Correo</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Contraseña</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        {error && <div className="notice ERROR">{error}</div>}
+        <button
+          className="btn block"
+          disabled={busy || !email.trim() || !password.trim() || (mode === 'register' && !displayName.trim())}
+          onClick={submit}
+        >
+          {busy ? 'Un momento…' : mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
+        </button>
+        <button
+          className="btn secondary block"
+          style={{ marginTop: 8 }}
+          onClick={() => {
+            setMode(mode === 'login' ? 'register' : 'login');
+            setError(null);
+          }}
+        >
+          {mode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -19,6 +125,9 @@ export default function App() {
 function Bootstrap() {
   const setFeed = useAppStore((s) => s.setFeed);
   const setAgency = useAppStore((s) => s.setAgency);
+  const clearAuth = useAppStore((s) => s.clearAuth);
+  const authUser = useAppStore((s) => s.authUser);
+  const queryClient = useQueryClient();
   const feedsQuery = useQuery({ queryKey: ['feeds'], queryFn: api.feeds.list });
   const [name, setName] = useState('IMTES Demo');
   const [busy, setBusy] = useState(false);
@@ -45,6 +154,9 @@ function Bootstrap() {
     try {
       const feed = await api.feeds.create({ name });
       const version = await api.feedVersions.create(feed.id);
+      // Igual que en AgencySetup: sin invalidar, el selector de feeds del Topbar
+      // sigue mostrando la lista vieja (sin el feed recién creado) al entrar al Shell.
+      await queryClient.invalidateQueries({ queryKey: ['feeds'] });
       setFeed(feed.id, version.id);
     } catch (e: any) {
       setError(e.message || 'Error creando el feed');
@@ -66,7 +178,8 @@ function Bootstrap() {
       <div className="bootstrap-card">
         <h2>GTFS Platform</h2>
         <p className="hint">
-          Crea tu primer feed para empezar. Podrás definir la agencia, paradas, rutas y horarios desde el mapa.
+          Hola {authUser?.displayName}. Crea tu primer feed para empezar. Podrás definir la agencia, paradas, rutas y
+          horarios desde el mapa.
         </p>
         <div className="field">
           <label>Nombre del feed</label>
@@ -75,6 +188,9 @@ function Bootstrap() {
         {error && <div className="notice ERROR">{error}</div>}
         <button className="btn block" disabled={busy || !name.trim()} onClick={createFeed}>
           {busy ? 'Creando…' : 'Crear feed'}
+        </button>
+        <button className="btn secondary block" style={{ marginTop: 8 }} onClick={clearAuth}>
+          Cerrar sesión
         </button>
       </div>
     </div>
@@ -90,6 +206,8 @@ function Shell() {
   const agencyId = useAppStore((s) => s.agencyId);
   const setAgency = useAppStore((s) => s.setAgency);
   const setFeed = useAppStore((s) => s.setFeed);
+  const authUser = useAppStore((s) => s.authUser);
+  const clearAuth = useAppStore((s) => s.clearAuth);
   const [tab, setTab] = useState<Tab>(agencyId ? 'stops' : 'routes');
 
   const configQuery = useQuery({ queryKey: ['config'], queryFn: api.config });
@@ -124,7 +242,14 @@ function Shell() {
 
   return (
     <div className="app-shell">
-      <Topbar feedVersion={feedVersionQuery.data} feeds={feedsQuery.data} activeFeedId={feedId} onSwitchFeed={switchFeed} />
+      <Topbar
+        feedVersion={feedVersionQuery.data}
+        feeds={feedsQuery.data}
+        activeFeedId={feedId}
+        onSwitchFeed={switchFeed}
+        user={authUser}
+        onLogout={clearAuth}
+      />
       <div className="main-area">
         <div className="sidebar">
           <div className="tabs">
@@ -152,6 +277,7 @@ function Shell() {
 
 function AgencySetup({ feedVersionId }: { feedVersionId: string }) {
   const setAgency = useAppStore((s) => s.setAgency);
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({
     agencyName: 'IMTES Demo',
     agencyUrl: 'https://example.org',
@@ -166,6 +292,9 @@ function AgencySetup({ feedVersionId }: { feedVersionId: string }) {
     setError(null);
     try {
       const agency = await api.agencies.create(feedVersionId, form);
+      // Sin esto, el Shell sigue leyendo la lista de agencias vacía que ya tenía
+      // en caché y vuelve a mostrar esta misma pantalla en vez de avanzar.
+      await queryClient.invalidateQueries({ queryKey: ['agencies', feedVersionId] });
       setAgency(agency.id);
     } catch (e: any) {
       setError(e.message || 'Error creando la agencia');
@@ -223,11 +352,15 @@ function Topbar({
   feeds,
   activeFeedId,
   onSwitchFeed,
+  user,
+  onLogout,
 }: {
   feedVersion?: { feed: { name: string }; versionNumber: number; status: string };
   feeds?: Feed[];
   activeFeedId?: string | null;
   onSwitchFeed?: (feedId: string) => void;
+  user?: { displayName: string; email: string } | null;
+  onLogout?: () => void;
 }) {
   return (
     <div className="topbar">
@@ -249,6 +382,16 @@ function Topbar({
       )}
       <div className="spacer" />
       {feedVersion && <span className="status-pill">{feedVersion.status}</span>}
+      {user && (
+        <div className="user-menu">
+          <span className="user-name" title={user.email}>
+            {user.displayName}
+          </span>
+          <button className="btn secondary" onClick={onLogout}>
+            Cerrar sesión
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -957,7 +1100,7 @@ function FaresPanel({ feedVersionId }: { feedVersionId: string }) {
 // ---------------------------------------------------------------------------
 function ValidationPanel({ feedVersionId }: { feedVersionId: string }) {
   const [summary, setSummary] = useState<ValidationSummary | null>(null);
-  const [busy, setBusy] = useState<'export' | 'validate' | null>(null);
+  const [busy, setBusy] = useState<'export' | 'validate' | 'download' | null>(null);
   const [exportInfo, setExportInfo] = useState<{ sha256: string; sizeBytes: number } | null>(null);
 
   async function runExport() {
@@ -965,6 +1108,15 @@ function ValidationPanel({ feedVersionId }: { feedVersionId: string }) {
     try {
       const res = await api.gtfs.export(feedVersionId);
       setExportInfo(res);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runDownload() {
+    setBusy('download');
+    try {
+      await api.gtfs.download(feedVersionId);
     } finally {
       setBusy(null);
     }
@@ -992,9 +1144,9 @@ function ValidationPanel({ feedVersionId }: { feedVersionId: string }) {
             gtfs.zip generado ({exportInfo.sizeBytes} bytes). SHA-256: {exportInfo.sha256.slice(0, 12)}…
           </div>
         )}
-        <a href={api.gtfs.downloadUrl(feedVersionId)} target="_blank" rel="noreferrer">
-          <button className="btn secondary block" style={{ marginTop: 6 }}>⬇ Descargar gtfs.zip</button>
-        </a>
+        <button className="btn secondary block" style={{ marginTop: 6 }} disabled={busy !== null} onClick={runDownload}>
+          {busy === 'download' ? 'Descargando…' : '⬇ Descargar gtfs.zip'}
+        </button>
       </div>
 
       <div className="panel-section">

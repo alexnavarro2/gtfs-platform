@@ -10,9 +10,14 @@ public class GtfsPlatformProperties {
     private final Validator validator = new Validator();
     private final Export export = new Export();
     private final Geocoding geocoding = new Geocoding();
+    private final Security security = new Security();
 
     public Map getMap() {
         return map;
+    }
+
+    public Security getSecurity() {
+        return security;
     }
 
     public Routing getRouting() {
@@ -149,6 +154,29 @@ public class GtfsPlatformProperties {
 
         public void setTimeoutSeconds(int timeoutSeconds) {
             this.timeoutSeconds = timeoutSeconds;
+        }
+    }
+
+    public static class Security {
+        // Sin default seguro a propósito: en producción debe venir de
+        // GTFSPLATFORM_JWT_SECRET. El default local solo sirve para dev/Docker Compose.
+        private String jwtSecret = "dev-only-secret-change-me-1234567890-abcdefghijklmnopqrstuvwxyz";
+        private int jwtExpirationHours = 168;
+
+        public String getJwtSecret() {
+            return jwtSecret;
+        }
+
+        public void setJwtSecret(String jwtSecret) {
+            this.jwtSecret = jwtSecret;
+        }
+
+        public int getJwtExpirationHours() {
+            return jwtExpirationHours;
+        }
+
+        public void setJwtExpirationHours(int jwtExpirationHours) {
+            this.jwtExpirationHours = jwtExpirationHours;
         }
     }
 }
