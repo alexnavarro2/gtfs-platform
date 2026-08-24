@@ -40,6 +40,7 @@ export function MapView({
   // propia sí refleja "¿ya pasó la carga inicial?" de forma estable.
   const styleReadyRef = useRef(false);
   const draftShapePoints = useAppStore((s) => s.draftShapePoints);
+  const draftPatternStopIds = useAppStore((s) => s.draftPatternStopIds);
   const mapTool = useAppStore((s) => s.mapTool);
 
   const onMapClickRef = useRef(onMapClick);
@@ -167,7 +168,14 @@ export function MapView({
     const update = () => {
       const source = map.getSource('stops') as maplibregl.GeoJSONSource | undefined;
       if (!source) return;
-      const selectedIds = new Set(patternStops.map((ps) => ps.stop.id));
+      // Se resalta tanto lo ya guardado (patternStops) como lo que se va
+      // seleccionando en el borrador de "Agregar paradas" (draftPatternStopIds) —
+      // sin esto, clicar una parada en ese modo no daba ninguna señal visual en
+      // el mapa de que sí quedó contada, solo el contador de texto en el panel.
+      const selectedIds = new Set([
+        ...patternStops.map((ps) => ps.stop.id),
+        ...(mapTool === 'add-pattern-stop' ? draftPatternStopIds : []),
+      ]);
       source.setData({
         type: 'FeatureCollection',
         features: stops.map((s) => ({
@@ -183,7 +191,7 @@ export function MapView({
     };
     if (styleReadyRef.current) update();
     else map.once('load', update);
-  }, [stops, patternStops]);
+  }, [stops, patternStops, draftPatternStopIds, mapTool]);
 
   useEffect(() => {
     const map = mapRef.current;

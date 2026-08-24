@@ -914,7 +914,9 @@ function PatternEditor({ patternId }: { patternId: string }) {
       {mapTool === 'draw-shape' && (
         <div>
           <p className="hint">
-            Haz clic en el mapa para agregar puntos de control ({draftShapePoints.length}). Cada tramo entre dos
+            Haz clic en el mapa para agregar puntos de control del trazo ({draftShapePoints.length}). Esto dibuja la
+            geometría de la calle, <strong>no agrega paradas</strong> — aunque hagas clic sobre una parada existente,
+            solo cuenta como punto del trazo. Para seleccionar paradas usa "📍 Agregar paradas". Cada tramo entre dos
             puntos se rutea automáticamente por la red vial.
           </p>
           {draftShapePoints.length >= 2 && (
