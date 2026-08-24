@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,6 +53,8 @@ public class GtfsImportServiceImpl {
     private final TripRepository tripRepository;
     private final StopTimeRepository stopTimeRepository;
     private final FrequencyEntryRepository frequencyEntryRepository;
+    private final FareProductRepository fareProductRepository;
+    private final FareLegRuleRepository fareLegRuleRepository;
 
     public GtfsImportServiceImpl(FeedRepository feedRepository, FeedVersionRepository feedVersionRepository,
                                   AgencyRepository agencyRepository, StopRepository stopRepository,
@@ -60,7 +63,9 @@ public class GtfsImportServiceImpl {
                                   ServiceCalendarRepository serviceCalendarRepository,
                                   ServiceExceptionRepository serviceExceptionRepository,
                                   TripRepository tripRepository, StopTimeRepository stopTimeRepository,
-                                  FrequencyEntryRepository frequencyEntryRepository) {
+                                  FrequencyEntryRepository frequencyEntryRepository,
+                                  FareProductRepository fareProductRepository,
+                                  FareLegRuleRepository fareLegRuleRepository) {
         this.feedRepository = feedRepository;
         this.feedVersionRepository = feedVersionRepository;
         this.agencyRepository = agencyRepository;
@@ -74,6 +79,8 @@ public class GtfsImportServiceImpl {
         this.tripRepository = tripRepository;
         this.stopTimeRepository = stopTimeRepository;
         this.frequencyEntryRepository = frequencyEntryRepository;
+        this.fareProductRepository = fareProductRepository;
+        this.fareLegRuleRepository = fareLegRuleRepository;
     }
 
     @Transactional
@@ -114,6 +121,7 @@ public class GtfsImportServiceImpl {
                 shapePointsByShapeId, counts, warnings);
         importFrequencies(extractDir, counts, warnings);
         importFeedInfo(extractDir, feedVersion);
+        importFaresV1(extractDir, feedVersion, routeByGtfsId, counts, warnings);
 
         feedVersionRepository.save(feedVersion);
 
@@ -506,16 +514,20 @@ public class GtfsImportServiceImpl {
             if (parser == null) {
                 return;
             }
+            // Se arma el índice trip_id -> Trip una sola vez en vez de un findAll() por
+            // fila (frequencies.txt puede tener cientos de filas en un feed real).
+            Map<String, Trip> tripByGtfsId = new HashMap<>();
+            for (Trip t : tripRepository.findAll()) {
+                tripByGtfsId.put(t.getGtfsId(), t);
+            }
             int n = 0;
             for (CSVRecord r : parser) {
                 String tripGtfsId = get(r, "trip_id");
-                List<Trip> matches = tripRepository.findAll().stream()
-                        .filter(t -> t.getGtfsId().equals(tripGtfsId)).toList();
-                if (matches.isEmpty()) {
+                Trip trip = tripByGtfsId.get(tripGtfsId);
+                if (trip == null) {
                     warnings.add("frequencies.txt: trip_id=" + tripGtfsId + " no encontrado, se omite");
                     continue;
                 }
-                Trip trip = matches.get(0);
                 trip.setFrequencyBased(true);
                 tripRepository.save(trip);
                 frequencyEntryRepository.save(FrequencyEntry.builder()
@@ -558,6 +570,95 @@ public class GtfsImportServiceImpl {
             }
         } catch (IOException e) {
             throw new RuntimeException("Error leyendo feed_info.txt", e);
+        }
+    }
+
+    // Fares V1 legado (sección 20 del prompt: "mantener compatibilidad de importación
+    // con Fares V1 cuando un feed existente lo utilice"). fare_attributes.txt se traduce
+    // 1:1 a fare_product. fare_rules.txt en el Fares V1 clásico asocia cada fare_id a un
+    // conjunto de route_id — como el esquema de Fase 1 todavía no modela networks/
+    // route_networks (Fase 2), solo se traduce fielmente el caso común de una tarifa que
+    // cubre TODA la red (fare_leg_rule con network_id nulo, equivalente a Fares V2); si el
+    // fare_rules.txt real tiene scoping más fino (subconjunto de rutas, o zonas vía
+    // origin_id/destination_id/contains_id) se avisa en vez de traducirlo en silencio,
+    // para no fingir una cobertura que el feed original no tiene (sección 28: "no
+    // modificar silenciosamente el contenido importado").
+    private void importFaresV1(Path dir, FeedVersion fv, Map<String, Route> routes, Map<String, Integer> counts,
+                                List<String> warnings) {
+        Map<String, FareProduct> productByFareId = new LinkedHashMap<>();
+        try (CSVParser parser = openCsv(dir, "fare_attributes.txt")) {
+            if (parser == null) {
+                return;
+            }
+            int n = 0;
+            for (CSVRecord r : parser) {
+                String price = get(r, "price");
+                if (price == null) {
+                    warnings.add("fare_attributes.txt: fare_id=" + get(r, "fare_id") + " sin price, se omite");
+                    continue;
+                }
+                FareProduct p = FareProduct.builder()
+                        .feedVersion(fv)
+                        .gtfsId(get(r, "fare_id"))
+                        .fareProductName(get(r, "fare_id"))
+                        .amount(new BigDecimal(price))
+                        .currency(get(r, "currency_type") != null ? get(r, "currency_type") : "MXN")
+                        .build();
+                p = fareProductRepository.save(p);
+                productByFareId.put(p.getGtfsId(), p);
+                n++;
+            }
+            counts.put("fare_products_v1", n);
+        } catch (IOException e) {
+            throw new RuntimeException("Error leyendo fare_attributes.txt", e);
+        }
+        if (productByFareId.isEmpty()) {
+            return;
+        }
+
+        try (CSVParser parser = openCsv(dir, "fare_rules.txt")) {
+            if (parser == null) {
+                // fare_attributes.txt sin fare_rules.txt: GTFS lo permite (tarifa implícita
+                // de red completa) -> se traduce igual a network-wide.
+                for (FareProduct product : productByFareId.values()) {
+                    fareLegRuleRepository.save(FareLegRule.builder().feedVersion(fv).fareProduct(product).build());
+                }
+                counts.put("fare_leg_rules", productByFareId.size());
+                return;
+            }
+            Map<String, Set<String>> routeIdsByFareId = new LinkedHashMap<>();
+            boolean hasZoneScoping = false;
+            for (CSVRecord r : parser) {
+                String fareId = get(r, "fare_id");
+                if (get(r, "origin_id") != null || get(r, "destination_id") != null || get(r, "contains_id") != null) {
+                    hasZoneScoping = true;
+                }
+                routeIdsByFareId.computeIfAbsent(fareId, k -> new LinkedHashSet<>()).add(get(r, "route_id"));
+            }
+            if (hasZoneScoping) {
+                warnings.add("fare_rules.txt: se detectó scoping por zona (origin_id/destination_id/contains_id); "
+                        + "no se modela todavía en Fase 1, se ignoró esa granularidad");
+            }
+            int n = 0;
+            for (Map.Entry<String, Set<String>> entry : routeIdsByFareId.entrySet()) {
+                FareProduct product = productByFareId.get(entry.getKey());
+                if (product == null) {
+                    warnings.add("fare_rules.txt: fare_id=" + entry.getKey() + " no está en fare_attributes.txt, se omite");
+                    continue;
+                }
+                boolean coversAllRoutes = entry.getValue().stream().allMatch(Objects::nonNull)
+                        && entry.getValue().containsAll(routes.keySet());
+                if (!coversAllRoutes) {
+                    warnings.add("fare_rules.txt: fare_id=" + entry.getKey() + " no cubre todas las rutas del feed ("
+                            + entry.getValue().size() + "/" + routes.size()
+                            + "); el scoping por ruta individual aún no se modela en Fase 1, se importó como tarifa de red completa");
+                }
+                fareLegRuleRepository.save(FareLegRule.builder().feedVersion(fv).fareProduct(product).build());
+                n++;
+            }
+            counts.put("fare_leg_rules", n);
+        } catch (IOException e) {
+            throw new RuntimeException("Error leyendo fare_rules.txt", e);
         }
     }
 

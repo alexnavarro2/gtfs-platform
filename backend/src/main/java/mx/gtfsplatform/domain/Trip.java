@@ -52,6 +52,11 @@ public class Trip {
     @Column(name = "created_at", updatable = false, insertable = false)
     private Instant createdAt;
 
-    @Column(name = "updated_at", insertable = false)
+    // updatable=false: sin esto, cualquier UPDATE de Trip (p.ej. marcar
+    // is_frequency_based=true al importar frequencies.txt) manda updated_at=NULL —
+    // el campo Java nunca se puebla porque insertable=false delega el valor inicial
+    // al DEFAULT now() de la columna, y no hay trigger de Postgres que lo refresque
+    // en cada UPDATE. Bug real detectado al importar un GTFS con frequencies.txt.
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
 }
