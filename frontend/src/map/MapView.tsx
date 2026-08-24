@@ -31,6 +31,14 @@ export function MapView({
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  // map.isStyleLoaded() puede devolver false transitoriamente (no solo antes de la
+  // primera carga) mientras el estilo procesa otras actualizaciones — usarlo como
+  // condición para decidir entre "actualizar ya" o "esperar a 'load'" es incorrecto,
+  // porque el evento 'load' del mapa se dispara UNA sola vez en toda su vida. Si el
+  // gate caía en el branch else después de la carga inicial, esa actualización se
+  // perdía para siempre (bug real: el recorrido ruteado nunca se pintaba). Esta bandera
+  // propia sí refleja "¿ya pasó la carga inicial?" de forma estable.
+  const styleReadyRef = useRef(false);
   const draftShapePoints = useAppStore((s) => s.draftShapePoints);
   const mapTool = useAppStore((s) => s.mapTool);
 
@@ -135,6 +143,8 @@ export function MapView({
         map.getCanvas().style.cursor = '';
         popup.remove();
       });
+
+      styleReadyRef.current = true;
     });
 
     mapRef.current = map;
@@ -171,7 +181,7 @@ export function MapView({
         })),
       });
     };
-    if (map.isStyleLoaded()) update();
+    if (styleReadyRef.current) update();
     else map.once('load', update);
   }, [stops, patternStops]);
 
@@ -190,7 +200,7 @@ export function MapView({
         properties: {},
       });
     };
-    if (map.isStyleLoaded()) update();
+    if (styleReadyRef.current) update();
     else map.once('load', update);
   }, [savedShapePoints]);
 
@@ -209,7 +219,7 @@ export function MapView({
         properties: {},
       });
     };
-    if (map.isStyleLoaded()) update();
+    if (styleReadyRef.current) update();
     else map.once('load', update);
   }, [routedPreviewPoints]);
 
@@ -233,7 +243,7 @@ export function MapView({
       }
       source.setData({ type: 'FeatureCollection', features });
     };
-    if (map.isStyleLoaded()) update();
+    if (styleReadyRef.current) update();
     else map.once('load', update);
   }, [draftShapePoints]);
 
