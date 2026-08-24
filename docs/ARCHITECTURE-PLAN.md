@@ -38,36 +38,73 @@ Investigación realizada contra fuentes primarias (no memoria): README y `pom.xm
 
 ## B. Gap analysis GTFS Schedule (spec vigente, `gtfs.org/schedule/reference`)
 
-| Archivo GTFS | Obligatoriedad | ¿`gtfs-lib` lo cubre? | Nuestra plataforma | Fase |
-|---|---|---|---|---|
-| `agency.txt` | Requerido | Sí | Modelo propio + exporter | 1 |
-| `stops.txt` | Cond. requerido | Sí | Modelo propio + editor en mapa | 1 |
-| `routes.txt` | Requerido | Sí | Modelo propio + editor | 1 |
-| `trips.txt` | Requerido | Sí | Generado desde Pattern+Schedule | 1 |
-| `stop_times.txt` | Requerido | Sí | Generado (3 métodos de tiempos) | 1 |
-| `calendar.txt` | Cond. requerido | Sí | Editor de calendario semanal | 1 |
-| `calendar_dates.txt` | Cond. requerido | Sí | Editor de excepciones | 1 |
-| `shapes.txt` | Opcional | Sí | Generado desde dibujo en mapa | 1 |
-| `frequencies.txt` | Opcional | Sí | Editor de frecuencias | 1 |
-| `feed_info.txt` | Cond. requerido | Sí | Formulario dedicado | 1 |
-| `fare_attributes.txt` / `fare_rules.txt` (Fares V1) | Opcional (legado) | Sí | Solo en import/export de compatibilidad | 2 |
-| `fare_products.txt` | Opcional (Fares V2) | **No** | Formulario simplificado "Tarifa" → genera esto | 1 (caso simple) / 2 (avanzado) |
-| `rider_categories.txt` | Opcional (Fares V2) | **No** | Perfiles tarifarios (estudiante, INAPAM, etc.) | 1 (caso simple) |
-| `fare_media.txt` | Opcional (Fares V2) | **No** | Medios de pago (efectivo, tarjeta, QR) | 1 (caso simple) |
-| `fare_leg_rules.txt` | Opcional (Fares V2) | **No** | Reglas por tramo | 2 |
-| `fare_leg_join_rules.txt` | Opcional (Fares V2) | **No** | — | 2 |
-| `fare_transfer_rules.txt` | Opcional (Fares V2) | **No** | Editor de transbordos | 2 |
-| `timeframes.txt` | Opcional (Fares V2) | **No** | — | 2 |
-| `networks.txt` / `route_networks.txt` | Opcional (Fares V2) | **No** | — | 2 |
-| `areas.txt` / `stop_areas.txt` | Opcional (Fares V2) | **No** | — | 2 |
-| `transfers.txt` | Opcional | Sí | Editor de transbordos físicos | 2 |
-| `pathways.txt` / `levels.txt` | Opcional | Parcial | — | 3 |
-| `translations.txt` | Opcional | No | — | 3 |
-| `attributions.txt` | Opcional | No | — | 3 |
-| `locations.geojson` / `location_groups.txt` / `location_group_stops.txt` | Opcional (demand-responsive) | No | — | 3 (fuera de alcance: bus urbano) |
-| `booking_rules.txt` | Opcional (demand-responsive) | No | — | Fuera de alcance MVP |
+> Auditoría de 2026-08-24 contra el código real (no aspiracional): se revisó cada
+> entidad de dominio, controlador, el importador y el exportador uno por uno.
+> La tabla anterior de esta sección describía lo que se planeaba construir en
+> la Fase 0; varias de esas casillas quedaron desactualizadas conforme avanzó
+> la implementación real. Esta versión refleja el estado verificado.
 
-Confirmado contra el reference vigente: Fares V2 ya es parte del **spec principal** (no una extensión aparte), por eso lo tratamos como ciudadano de primera clase desde el modelo de datos, aunque el formulario de captura empiece simple (sección 21).
+### B.1 Archivos requeridos / condicionalmente requeridos — cobertura real
+
+| Archivo GTFS | Obligatoriedad spec | Estado real |
+|---|---|---|
+| `agency.txt` | Requerido | ✅ Completo: modelo, editor (pestaña "Agencia"), import y export |
+| `stops.txt` | Cond. requerido | ✅ Completo: editor en mapa, import y export |
+| `routes.txt` | Requerido | ✅ Completo, incluye `continuous_pickup`/`continuous_drop_off` |
+| `trips.txt` | Requerido | ✅ Generado desde Pattern + Schedule |
+| `stop_times.txt` | Requerido | ✅ Generado (frecuencia u horario explícito) |
+| `calendar.txt` | Cond. requerido | ✅ Editor de calendario semanal |
+| `calendar_dates.txt` | Cond. requerido | ✅ Editor de excepciones |
+| `feed_info.txt` | Cond. requerido | 🔴 **Gap real** — ver B.2 |
+| `levels.txt` | Cond. requerido (solo si hay `pathway_mode=5`, elevadores) | Sin implementar — no aplica mientras no haya `pathways.txt` |
+
+**Conclusión sobre lo estrictamente obligatorio:** de los archivos que el spec marca Requerido o Condicionalmente Requerido, solo **`feed_info.txt`** tiene un hueco real. Todo lo demás (agency/stops/routes/trips/stop_times/calendar/calendar_dates) está completo y probado end-to-end (incluyendo contra el validador oficial de MobilityData).
+
+### B.2 Gap real #1 — `feed_info.txt` nunca se puede completar para un feed creado desde cero
+
+`FeedVersion` ya tiene las columnas (`feed_publisher_name`, `feed_publisher_url`, `feed_lang`, `feed_start_date`, `feed_end_date`, `feed_version`, `feed_contact_email`, `feed_contact_url`) y el exportador ya sabe escribir el archivo — pero:
+- `FeedVersionController` no tiene ningún endpoint `PUT`/`PATCH` para setear esos campos.
+- No existe ningún formulario en el frontend que los muestre.
+- El importador SÍ lee `feed_info.txt` de un GTFS subido, así que un feed reimportado desde un zip existente sí queda con estos datos — pero el flujo principal (crear un feed nuevo en el portal) nunca los llena.
+- `GtfsExportServiceImpl.writeFeedInfo()` detecta `feedPublisherName == null` y **omite el archivo por completo** en vez de escribir campos vacíos.
+
+Resultado: todo feed creado desde el portal (no importado) exporta sin `feed_info.txt`. Como es "Cond. requerido" (obligatorio si hay `translations.txt`, recomendado en cualquier otro caso) y el validador oficial de MobilityData emite una notice de mejores prácticas cuando falta, es el único punto donde el criterio "GTFS válido y publicable" queda corto contra el spec vigente. Fix acotado: un formulario "Feed" (nombre del publicador, URL, idioma, vigencia) + `PUT /api/v1/feed-versions/{id}`.
+
+### B.3 Gap real #2 — Fares V2 y `transfers.txt`: backend completo, UI casi vacía
+
+El backend tiene CRUD completo (`FareController`, `TransferRuleController`) para las 5 tablas de Fares V2 y para `transfer_rule`, pero el frontend solo conecta una fracción:
+
+| Archivo | Backend (`FareController`/`TransferRuleController`) | Cliente API (`client.ts`) | UI (`App.tsx`) |
+|---|---|---|---|
+| `fare_products.txt` | ✅ CRUD completo | ✅ solo `list`/`create` | ✅ formulario "Nueva tarifa" |
+| `rider_categories.txt` | ✅ CRUD completo | ✅ `list`/`create` definidos | ❌ nunca se llaman — código muerto |
+| `fare_media.txt` | ✅ CRUD completo | ❌ no existe | ❌ |
+| `fare_leg_rules.txt` | ✅ CRUD completo | ❌ no existe | ❌ |
+| `fare_transfer_rules.txt` | ✅ CRUD completo | ❌ no existe | ❌ |
+| `transfers.txt` | ✅ CRUD completo | ❌ no existe | ❌ — y tampoco se importa desde un zip subido |
+
+Como los 6 archivos son Opcionales según el spec, esto **no** bloquea el criterio de "GTFS válido" — pero sí significa que hoy solo se puede crear una tarifa plana por trayecto (nombre + monto + moneda); no hay forma de asociar un medio de pago, una categoría de tarifa (estudiante, INAPAM), una regla de transbordo con descuento, ni transbordos físicos entre paradas, sin editar la base de datos directamente.
+
+### B.4 Sin implementar (Opcional en el spec, out of scope actual)
+
+| Archivo | Obligatoriedad | Nota |
+|---|---|---|
+| `pathways.txt` | Opcional | Ruteo peatonal dentro de estaciones — relevante para metro/intermodal, no para el caso de uso actual (bus urbano en superficie) |
+| `translations.txt` | Opcional | Multi-idioma en nombres de paradas/rutas |
+| `attributions.txt` | Opcional | Créditos de datos a terceros |
+| `areas.txt` / `stop_areas.txt` | Opcional (Fares V2) | Tarifas por zona geográfica en vez de por parada |
+| `networks.txt` / `route_networks.txt` | Cond. **prohibido** si `routes.route_type` ya define `network_id` | No aplica al caso simple actual |
+| `timeframes.txt` | Opcional (Fares V2) | Tarifas que varían por horario (hora pico) |
+| `fare_leg_join_rules.txt` | Opcional (Fares V2) | Combinar tramos como un solo trayecto tarifario |
+| `locations.geojson` / `location_groups.txt` / `location_group_stops.txt` / `booking_rules.txt` | Opcional (GTFS-Flex) | Transporte a demanda — fuera de alcance (bus urbano de ruta fija) |
+
+Ninguno de estos es Requerido ni Condicionalmente Requerido para un feed de bus urbano de ruta fija sin estaciones multinivel — su ausencia no impide que el feed sea válido según el spec.
+
+### B.5 Prioridad recomendada
+
+1. **`feed_info.txt`** (B.2) — es el único hueco que toca la barra de "requerido por el spec"; arreglo acotado (1 formulario + 1 endpoint).
+2. **Conectar la UI de Fares V2 ya construida en el backend** (B.3) — no es requerido por el spec, pero es funcionalidad ya pagada (CRUD completo) que hoy es inalcanzable desde el producto.
+3. Todo lo demás (B.4) — evaluar solo si el alcance crece más allá de bus urbano de ruta fija (p. ej. si se integra con metro/BRT con estaciones, o se necesita multi-idioma).
 
 ---
 
