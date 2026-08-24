@@ -11,4 +11,5 @@ public interface TripRepository extends JpaRepository<Trip, UUID> {
     List<Trip> findByRoutePatternIdIn(List<UUID> routePatternIds);
     List<Trip> findByServiceCalendarId(UUID serviceCalendarId);
     void deleteByRoutePatternId(UUID routePatternId);
+    void deleteByRoutePatternIdAndServiceCalendarId(UUID routePatternId, UUID serviceCalendarId);
 }

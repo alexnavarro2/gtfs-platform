@@ -151,6 +151,15 @@ public class ScheduleGenerationService {
         Offsets offsets = computeOffsets(orderedStops, req.method(), req.segmentSeconds(), req.speedKmh(),
                 req.totalTripTimeSec(), orderedShapePoints);
 
+        // Sin esto, regenerar el horario para el mismo pattern+servicio (p.ej. probando
+        // otra velocidad u otras horas de salida) no reemplazaba los trips anteriores,
+        // solo sumaba más — bug real detectado viendo la lista de "Trips generados".
+        // Otros servicios sobre el mismo pattern (entre semana vs fin de semana) no se
+        // tocan porque el borrado es por (routePatternId, serviceCalendarId), no solo
+        // por pattern.
+        tripRepository.deleteByRoutePatternIdAndServiceCalendarId(patternId, calendar.getId());
+        tripRepository.flush();
+
         List<Trip> created = new ArrayList<>();
         for (String departure : req.departureTimes()) {
             int baseSec = GtfsTime.parseToSeconds(departure);
@@ -190,6 +199,11 @@ public class ScheduleGenerationService {
         if (req.windows() == null || req.windows().isEmpty()) {
             throw new IllegalArgumentException("Se necesita al menos una ventana de frecuencia");
         }
+
+        // Mismo motivo que en generateExplicitTrips: reemplaza los trips previos de
+        // este pattern+servicio en vez de acumularlos en cada regeneración.
+        tripRepository.deleteByRoutePatternIdAndServiceCalendarId(patternId, calendar.getId());
+        tripRepository.flush();
 
         String tripGtfsId = idGenerator.next("trip", "TRIP_" + pattern.getShapeGtfsId(), patternId, "route_pattern_id");
         Trip trip = Trip.builder()

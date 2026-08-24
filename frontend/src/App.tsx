@@ -1181,6 +1181,10 @@ function PatternEditor({ patternId }: { patternId: string }) {
       setMapTool('none');
       queryClient.invalidateQueries({ queryKey: ['patternStops', patternId] });
       queryClient.invalidateQueries({ queryKey: ['shapePoints', patternId] });
+      // replacePatternStops borra los trips del pattern en el backend (dejan de
+      // ser válidos si cambia el orden/paradas) — sin esto, TripsList seguía
+      // mostrando trips que ya no existen hasta un refresh manual.
+      queryClient.invalidateQueries({ queryKey: ['trips', patternId] });
     },
   });
 
@@ -1204,6 +1208,7 @@ function PatternEditor({ patternId }: { patternId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patternStops', patternId] });
       queryClient.invalidateQueries({ queryKey: ['shapePoints', patternId] });
+      queryClient.invalidateQueries({ queryKey: ['trips', patternId] });
     },
   });
 
@@ -1217,6 +1222,7 @@ function PatternEditor({ patternId }: { patternId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patternStops', patternId] });
       queryClient.invalidateQueries({ queryKey: ['shapePoints', patternId] });
+      queryClient.invalidateQueries({ queryKey: ['trips', patternId] });
     },
   });
 
@@ -1348,6 +1354,7 @@ function PatternEditor({ patternId }: { patternId: string }) {
 // ---------------------------------------------------------------------------
 function ScheduleEditor({ patternId }: { patternId: string }) {
   const feedVersionId = useAppStore((s) => s.feedVersionId)!;
+  const queryClient = useQueryClient();
   const calendarsQuery = useQuery({ queryKey: ['calendars', feedVersionId], queryFn: () => api.calendars.list(feedVersionId) });
   const [mode, setMode] = useState<'frequency' | 'explicit'>('frequency');
   const [serviceCalendarId, setServiceCalendarId] = useState('');
@@ -1391,6 +1398,7 @@ function ScheduleEditor({ patternId }: { patternId: string }) {
         });
         setResult(`${Array.isArray(res) ? res.length : 0} trips generados.`);
       }
+      queryClient.invalidateQueries({ queryKey: ['trips', patternId] });
     } catch (e: any) {
       setResult('Error: ' + e.message);
     } finally {
@@ -1440,6 +1448,61 @@ function ScheduleEditor({ patternId }: { patternId: string }) {
         {busy ? 'Generando…' : 'Generar trips y stop_times'}
       </button>
       {result && <div className="notice INFO">{result}</div>}
+      <TripsList patternId={patternId} />
+    </div>
+  );
+}
+
+// Lista de los trips ya generados para este pattern — sin esto, el único
+// rastro de "Generar trips y stop_times" era el mensaje puntual que
+// desaparecía al recargar o cambiar de pestaña.
+function TripsList({ patternId }: { patternId: string }) {
+  const queryClient = useQueryClient();
+  const tripsQuery = useQuery({ queryKey: ['trips', patternId], queryFn: () => api.trips.list(patternId) });
+
+  const removeTrip = useMutation({
+    mutationFn: (id: string) => api.trips.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['trips', patternId] }),
+  });
+
+  const trips = tripsQuery.data || [];
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <h3>Trips generados ({trips.length})</h3>
+      {trips.length === 0 && <p className="hint">Todavía no hay trips para este recorrido.</p>}
+      {trips.map((t) => (
+        <div key={t.id} className="list-item" style={{ alignItems: 'flex-start' }}>
+          <div>
+            <div>
+              <strong>{t.gtfsId}</strong> {t.tripHeadsign && `· ${t.tripHeadsign}`}
+            </div>
+            <div className="hint" style={{ margin: 0 }}>
+              {t.serviceCalendarName} · {t.stopCount} paradas
+              {t.frequencyBased
+                ? t.frequencies.map((f, i) => (
+                    <span key={i}>
+                      {' '}
+                      · {f.startTime}–{f.endTime} cada {Math.round(f.headwaySecs / 60)} min
+                    </span>
+                  ))
+                : t.firstDeparture && ` · sale ${t.firstDeparture}, llega ${t.lastArrival}`}
+            </div>
+          </div>
+          <button
+            className="btn danger icon-btn"
+            disabled={removeTrip.isPending}
+            title="Eliminar trip"
+            onClick={() => {
+              if (window.confirm(`¿Eliminar el trip "${t.gtfsId}"? Esta acción no se puede deshacer.`)) {
+                removeTrip.mutate(t.id);
+              }
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

@@ -197,6 +197,24 @@ export interface RiderCategory {
   isDefaultFareCategory?: number;
 }
 
+export interface TripFrequencyWindow {
+  startTime: string;
+  endTime: string;
+  headwaySecs: number;
+}
+
+export interface TripSummary {
+  id: string;
+  gtfsId?: string;
+  tripHeadsign?: string;
+  serviceCalendarName?: string;
+  frequencyBased: boolean;
+  stopCount: number;
+  firstDeparture?: string;
+  lastArrival?: string;
+  frequencies: TripFrequencyWindow[];
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -303,6 +321,10 @@ export const api = {
   schedule: {
     explicit: (patternId: string, body: unknown) => post(`/patterns/${patternId}/schedule/explicit`, body),
     frequency: (patternId: string, body: unknown) => post(`/patterns/${patternId}/schedule/frequency`, body),
+  },
+  trips: {
+    list: (patternId: string) => get<TripSummary[]>(`/patterns/${patternId}/trips`),
+    remove: (id: string) => del<void>(`/trips/${id}`),
   },
   fares: {
     riderCategories: {
