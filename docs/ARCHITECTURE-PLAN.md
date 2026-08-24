@@ -55,12 +55,12 @@ Investigación realizada contra fuentes primarias (no memoria): README y `pom.xm
 | `stop_times.txt` | Requerido | ✅ Generado (frecuencia u horario explícito) |
 | `calendar.txt` | Cond. requerido | ✅ Editor de calendario semanal |
 | `calendar_dates.txt` | Cond. requerido | ✅ Editor de excepciones |
-| `feed_info.txt` | Cond. requerido | 🔴 **Gap real** — ver B.2 |
+| `feed_info.txt` | Cond. requerido | ✅ Resuelto — ver B.2 (formulario "Datos del feed" + `PUT /api/v1/feed-versions/{id}/feed-info`) |
 | `levels.txt` | Cond. requerido (solo si hay `pathway_mode=5`, elevadores) | Sin implementar — no aplica mientras no haya `pathways.txt` |
 
-**Conclusión sobre lo estrictamente obligatorio:** de los archivos que el spec marca Requerido o Condicionalmente Requerido, solo **`feed_info.txt`** tiene un hueco real. Todo lo demás (agency/stops/routes/trips/stop_times/calendar/calendar_dates) está completo y probado end-to-end (incluyendo contra el validador oficial de MobilityData).
+**Conclusión sobre lo estrictamente obligatorio:** de los archivos que el spec marca Requerido o Condicionalmente Requerido, **todos** están cubiertos de punta a punta (agency/stops/routes/trips/stop_times/calendar/calendar_dates/feed_info), probado contra el validador oficial de MobilityData incluyendo la exportación real de `feed_info.txt` (ver B.2).
 
-### B.2 Gap real #1 — `feed_info.txt` nunca se puede completar para un feed creado desde cero
+### B.2 [RESUELTO] `feed_info.txt` nunca se podía completar para un feed creado desde cero
 
 `FeedVersion` ya tiene las columnas (`feed_publisher_name`, `feed_publisher_url`, `feed_lang`, `feed_start_date`, `feed_end_date`, `feed_version`, `feed_contact_email`, `feed_contact_url`) y el exportador ya sabe escribir el archivo — pero:
 - `FeedVersionController` no tiene ningún endpoint `PUT`/`PATCH` para setear esos campos.
@@ -68,7 +68,9 @@ Investigación realizada contra fuentes primarias (no memoria): README y `pom.xm
 - El importador SÍ lee `feed_info.txt` de un GTFS subido, así que un feed reimportado desde un zip existente sí queda con estos datos — pero el flujo principal (crear un feed nuevo en el portal) nunca los llena.
 - `GtfsExportServiceImpl.writeFeedInfo()` detecta `feedPublisherName == null` y **omite el archivo por completo** en vez de escribir campos vacíos.
 
-Resultado: todo feed creado desde el portal (no importado) exporta sin `feed_info.txt`. Como es "Cond. requerido" (obligatorio si hay `translations.txt`, recomendado en cualquier otro caso) y el validador oficial de MobilityData emite una notice de mejores prácticas cuando falta, es el único punto donde el criterio "GTFS válido y publicable" queda corto contra el spec vigente. Fix acotado: un formulario "Feed" (nombre del publicador, URL, idioma, vigencia) + `PUT /api/v1/feed-versions/{id}`.
+Resultado: todo feed creado desde el portal (no importado) exportaba sin `feed_info.txt`. Como es "Cond. requerido" (obligatorio si hay `translations.txt`, recomendado en cualquier otro caso) y el validador oficial de MobilityData emite una notice de mejores prácticas cuando falta, era el único punto donde el criterio "GTFS válido y publicable" quedaba corto contra el spec vigente.
+
+**Resuelto:** se agregó `PUT /api/v1/feed-versions/{id}/feed-info` (DTO dedicado a estos 9 campos, no la entidad completa, para no repetir el bug de sobreescritura ciega que ya se había corregido en `AgencyController`) y un formulario "Datos del feed" al inicio de la pestaña Agencia. Verificado exportando un feed real: `feed_info.txt` se genera con los 9 campos y fechas en formato GTFS (`YYYYMMDD`).
 
 ### B.3 Gap real #2 — Fares V2 y `transfers.txt`: backend completo, UI casi vacía
 
@@ -102,7 +104,7 @@ Ninguno de estos es Requerido ni Condicionalmente Requerido para un feed de bus 
 
 ### B.5 Prioridad recomendada
 
-1. **`feed_info.txt`** (B.2) — es el único hueco que toca la barra de "requerido por el spec"; arreglo acotado (1 formulario + 1 endpoint).
+1. ~~`feed_info.txt`~~ (B.2) — **resuelto**, era el único hueco que tocaba la barra de "requerido por el spec".
 2. **Conectar la UI de Fares V2 ya construida en el backend** (B.3) — no es requerido por el spec, pero es funcionalidad ya pagada (CRUD completo) que hoy es inalcanzable desde el producto.
 3. Todo lo demás (B.4) — evaluar solo si el alcance crece más allá de bus urbano de ruta fija (p. ej. si se integra con metro/BRT con estaciones, o se necesita multi-idioma).
 
