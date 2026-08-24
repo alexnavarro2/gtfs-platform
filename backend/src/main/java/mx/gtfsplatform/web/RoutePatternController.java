@@ -13,6 +13,7 @@ import mx.gtfsplatform.repository.RoutePatternRepository;
 import mx.gtfsplatform.repository.RouteRepository;
 import mx.gtfsplatform.repository.ShapePointRepository;
 import mx.gtfsplatform.repository.StopRepository;
+import mx.gtfsplatform.repository.TripRepository;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 public class RoutePatternController {
@@ -29,16 +31,18 @@ public class RoutePatternController {
     private final ShapePointRepository shapePointRepository;
     private final PatternStopRepository patternStopRepository;
     private final StopRepository stopRepository;
+    private final TripRepository tripRepository;
     private final GtfsIdGenerator idGenerator;
 
     public RoutePatternController(RoutePatternRepository routePatternRepository, RouteRepository routeRepository,
             ShapePointRepository shapePointRepository, PatternStopRepository patternStopRepository,
-            StopRepository stopRepository, GtfsIdGenerator idGenerator) {
+            StopRepository stopRepository, TripRepository tripRepository, GtfsIdGenerator idGenerator) {
         this.routePatternRepository = routePatternRepository;
         this.routeRepository = routeRepository;
         this.shapePointRepository = shapePointRepository;
         this.patternStopRepository = patternStopRepository;
         this.stopRepository = stopRepository;
+        this.tripRepository = tripRepository;
         this.idGenerator = idGenerator;
     }
 
@@ -93,10 +97,15 @@ public class RoutePatternController {
     }
 
     @PutMapping("/api/v1/patterns/{id}/shape-points")
+    @Transactional
     public List<ShapePoint> replaceShapePoints(@PathVariable UUID id, @RequestBody List<LatLon> points) {
         RoutePattern routePattern = routePatternRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("RoutePattern not found: " + id));
         shapePointRepository.deleteByRoutePatternId(id);
+        // Sin este flush, Hibernate puede reordenar el INSERT antes del DELETE dentro
+        // del mismo flush automático y violar la unique (route_pattern_id, shape_pt_sequence)
+        // al reusar las mismas secuencias que se están reemplazando.
+        shapePointRepository.flush();
         List<ShapePoint> shapePoints = points.stream()
                 .map(p -> ShapePoint.builder()
                         .routePattern(routePattern)
@@ -112,10 +121,20 @@ public class RoutePatternController {
     }
 
     @PutMapping("/api/v1/patterns/{id}/stops")
+    @Transactional
     public List<PatternStop> replacePatternStops(@PathVariable UUID id, @RequestBody List<StopRef> stopRefs) {
         RoutePattern routePattern = routePatternRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("RoutePattern not found: " + id));
+        // Cambiar las paradas invalida cualquier trip/stop_time generado sobre el orden
+        // anterior (stop_time.pattern_stop_id no tiene ON DELETE CASCADE a propósito,
+        // para no borrar horarios por accidente desde ningún otro flujo) — el usuario
+        // debe regenerar el horario después de reordenar/cambiar paradas.
+        tripRepository.deleteByRoutePatternId(id);
+        tripRepository.flush();
         patternStopRepository.deleteByRoutePatternId(id);
+        // Mismo motivo que en replaceShapePoints: forzar el DELETE antes de insertar
+        // filas nuevas que reusan las mismas (route_pattern_id, stop_sequence).
+        patternStopRepository.flush();
         List<PatternStop> patternStops = stopRefs.stream()
                 .map(ref -> {
                     Stop stop = stopRepository.findById(ref.stopId())

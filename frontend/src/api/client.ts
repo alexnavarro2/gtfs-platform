@@ -153,6 +153,11 @@ export const api = {
       get<{ suggestedName?: string }>(`/geocoding/suggest-stop-name?lat=${lat}&lon=${lon}`),
   },
 
+  routing: {
+    route: (points: { lat: number; lon: number }[]) =>
+      post<{ points: [number, number][]; routed: boolean; provider: string }>('/routing/route', { points }),
+  },
+
   feeds: {
     list: () => get<Feed[]>('/feeds'),
     create: (body: { name: string; description?: string }) => post<Feed>('/feeds', body),

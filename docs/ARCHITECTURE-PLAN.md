@@ -180,7 +180,7 @@ Frontend                          Backend (SPI)
 
 Decisiones:
 - **Tiles**: en dev, tiles raster estándar `tile.openstreetmap.org` con atribución `© OpenStreetMap contributors` visible siempre en el mapa (uso ligero, sin precarga masiva, cumple política de uso aceptable de OSM). En producción, `MapTileProvider` se reconfigura vía variable de entorno hacia un proveedor comercial o tiles propios — **no se cablea ningún proveedor en el código**.
-- **Routing**: `RoutingProvider` con implementación `ManualRoutingProvider` (identidad: no rutea, el usuario dibuja) activa por defecto, y una implementación `OsrmRoutingProvider` opcional (Modo 1/3 de la sección 9), apuntando a una URL configurable — no se incluye un servidor OSRM en el `docker-compose` base porque requiere datos OSM regionales pesados que no vamos a descargar/precargar sin que el usuario elija la región. Esto se documenta como decisión abierta en la sección J.
+- **Routing**: `RoutingProvider` con `OsrmRoutingProvider` activo por defecto (Modo 1/3 de la sección 9 — unir paradas existentes y rutear automáticamente por la red vial, igual que Conveyal construye patterns con su propio motor R5: `{r5url}/plan?...&mode=CAR`, código rastreado en `datatools-ui/lib/editor/util/map.js#route`). Probado con 15 pares de puntos reales en Hermosillo contra el demo público de OSRM (`router.project-osrm.org`): 15/15 éxito, ~0.9s promedio — mismo criterio que geocoding, no se hospeda un OSRM propio por defecto (requeriría descargar un extracto OSM regional), el demo público sirve para arrancar y `GTFSPLATFORM_OSRM_URL` se reconfigura hacia una instancia propia en producción. `ManualRoutingProvider` (líneas rectas, sin red vial) sigue disponible por config. Expuesto vía `POST /api/v1/routing/route`; el frontend llama a este endpoint automáticamente al ir seleccionando paradas existentes en la herramienta "📍 Agregar paradas" y muestra la geometría como propuesta editable (nunca auto-aceptada, sección 55) hasta que el usuario confirma "Guardar paradas y recorrido".
 - **Geocoding**: `GeocodingProvider.suggestStopName(lat, lon)` — sugiere nombre de parada por intersección más cercana ("Calle Rosales & Avenida Doctor Paliza"), igual que Conveyal Data Tools. A diferencia del autocomplete indiscriminado que sí evitamos (sección 4), esto es **una sola consulta puntual** disparada por una acción explícita del usuario (crear una parada), no un typeahead continuo — por eso sí tiene una implementación activa por defecto. Dos implementaciones, seleccionables por config, sin cambiar el resto de la app:
   - `EsriIntersectionGeocodingProvider` (por defecto): replica el mecanismo real que usa el editor de Conveyal — se rastreó el código fuente de `datatools-ui` (`lib/editor/util/map.js#constructStop` + `lib/scenario-editor/utils/reverse.js#reverseEsri`) y usa exactamente el mismo endpoint: `ArcGIS World Geocoding Service` (`geocode.arcgis.com/.../reverseGeocode`) con `returnIntersection=true`, que devuelve el string `"Calle A & Avenida B"` ya formateado por Esri. Más confiable (servicio comercial con SLA) a cambio de depender de un tercero propietario; no requiere API key para uso básico no persistido (20,000 consultas/mes gratis), con un token opcional (`gtfsplatform.geocoding.esri-api-key`) para más cuota en producción.
   - `OverpassGeocodingProvider`: calcula la intersección nosotros mismos a partir de geometría cruda de vías OSM vía la API pública de Overpass, rotando entre varios espejos comunitarios. 100% datos abiertos, pero mostró conectividad intermitente en pruebas.
@@ -253,7 +253,7 @@ GTFS-Platform/
 11. Seed demo IMTES/Ruta 18 (Hermosillo, datos de ejemplo).
 12. Tests unitarios/integración clave + prueba E2E del camino crítico.
 
-**Fase 2:** Fares V2 avanzado, `transfers.txt`, import GIS (GeoJSON/KML/GPX/CSV/Shapefile), comparador de versiones, edición masiva, dashboard avanzado, `RoutingProvider` real (OSRM).
+**Fase 2:** Fares V2 avanzado, `transfers.txt`, import GIS (GeoJSON/KML/GPX/CSV/Shapefile), comparador de versiones, edición masiva, dashboard avanzado.
 
 **Fase 3:** usuarios/organizaciones/roles finos, workflows de aprobación, publicación automática, API pública, analítica, GTFS Realtime.
 
@@ -277,11 +277,12 @@ GTFS-Platform/
 
 ## J. Decisiones que requieren input del usuario
 
-1. **Proveedor de routing real (Modo 1 automático, sección 9).** Para el MVP la geometría se dibuja manualmente/híbrida (siempre editable, nunca auto-aceptada, cumpliendo la sección 55), así que esto **no bloquea** el milestone pedido. Cuando quieras activar ruteo automático hace falta decidir: ¿OSRM propio (necesita descargar un extracto OSM de la región, p. ej. Sonora/México), Valhalla, o un proveedor comercial? Puedo dejarlo listo con OSRM auto-hospedado como opción por defecto si me confirmas la región a precargar.
+1. ~~Proveedor de routing real~~ — resuelto: `OsrmRoutingProvider` activo por defecto contra el demo público, ver sección F.
 2. **Proveedor de tiles para producción.** Dev usa tiles OSM estándar con atribución. Para producción real se necesita una cuenta en un proveedor (MapTiler/Stadia/Maptiler self-hosted) o tiles propios — puedo dejarlo parametrizado por variable de entorno sin necesidad de decidirlo ahora.
 3. **Autenticación real (OAuth2/OIDC/Keycloak/Entra ID, sección 50).** El MVP usa roles ADMIN/EDITOR/VIEWER simples (sin proveedor externo). Cuando quieras conectar un IdP real, dime cuál usa la organización.
+4. **Para producción real, tanto Overpass/OSRM públicos como Esri deberían pasar a instancias propias/con cuota garantizada** — los defaults actuales (probados con datos reales) son idóneos para desarrollo y demos, no para carga sostenida de una operación en producción.
 
-Ninguna de las tres bloquea el criterio de aceptación del MVP (sección 61 del prompt); quedan resueltas con valores por defecto razonables y interfaces ya desacopladas para cambiarlas después.
+Ninguna bloquea el criterio de aceptación del MVP (sección 61 del prompt); quedan resueltas con valores por defecto razonables y probados, e interfaces ya desacopladas para cambiarlas después.
 
 ---
 

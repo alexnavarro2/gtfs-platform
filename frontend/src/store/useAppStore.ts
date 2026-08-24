@@ -12,6 +12,11 @@ interface AppState {
   mapTool: MapTool;
   draftShapePoints: { lat: number; lon: number }[];
   draftPatternStopIds: string[];
+  // Recorrido calculado por la red vial al ir uniendo las paradas seleccionadas
+  // (sección 9, Modo 1/3 — igual que Conveyal construye el pattern con su motor
+  // de ruteo). Nunca se guarda solo: el usuario confirma con "Guardar recorrido".
+  routedPreviewPoints: { lat: number; lon: number }[];
+  routedPreviewInfo: { routed: boolean; provider: string } | null;
   setFeed: (feedId: string, feedVersionId: string) => void;
   setAgency: (agencyId: string) => void;
   setActiveRoute: (routeId: string | null) => void;
@@ -22,6 +27,7 @@ interface AppState {
   clearDraftShapePoints: () => void;
   toggleDraftPatternStop: (stopId: string) => void;
   clearDraftPatternStops: () => void;
+  setRoutedPreview: (points: { lat: number; lon: number }[], info: { routed: boolean; provider: string } | null) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -34,11 +40,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   mapTool: 'none',
   draftShapePoints: [],
   draftPatternStopIds: [],
+  routedPreviewPoints: [],
+  routedPreviewInfo: null,
   setFeed: (feedId, feedVersionId) => set({ feedId, feedVersionId }),
   setAgency: (agencyId) => set({ agencyId }),
   setActiveRoute: (routeId) => set({ activeRouteId: routeId, activePatternId: null }),
   setActivePattern: (patternId) =>
-    set({ activePatternId: patternId, draftShapePoints: [], draftPatternStopIds: [] }),
+    set({
+      activePatternId: patternId,
+      draftShapePoints: [],
+      draftPatternStopIds: [],
+      routedPreviewPoints: [],
+      routedPreviewInfo: null,
+    }),
   setActiveCalendar: (calendarId) => set({ activeCalendarId: calendarId }),
   setMapTool: (tool) => set({ mapTool: tool }),
   addDraftShapePoint: (pt) => set({ draftShapePoints: [...get().draftShapePoints, pt] }),
@@ -51,5 +65,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         : [...current, stopId],
     });
   },
-  clearDraftPatternStops: () => set({ draftPatternStopIds: [] }),
+  clearDraftPatternStops: () => set({ draftPatternStopIds: [], routedPreviewPoints: [], routedPreviewInfo: null }),
+  setRoutedPreview: (points, info) => set({ routedPreviewPoints: points, routedPreviewInfo: info }),
 }));

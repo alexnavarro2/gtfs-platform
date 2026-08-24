@@ -44,8 +44,12 @@ public class GtfsPlatformProperties {
     }
 
     public static class Routing {
-        private String provider = "manual";
-        private String osrmUrl;
+        // Default "osrm" contra el demo público de OSRM tras probar 15 pares de
+        // puntos reales en Hermosillo: 15/15 éxito, ~0.9s promedio. Igual que
+        // geocoding, "manual" (sin red vial) sigue disponible por config — ver
+        // docs/ARCHITECTURE-PLAN.md sección I.
+        private String provider = "osrm";
+        private String osrmUrl = "https://router.project-osrm.org";
 
         public String getProvider() {
             return provider;

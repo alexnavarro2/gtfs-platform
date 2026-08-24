@@ -10,6 +10,7 @@ interface MapViewProps {
   stops: Stop[];
   patternStops: PatternStop[];
   savedShapePoints: { lat: number; lon: number }[];
+  routedPreviewPoints?: { lat: number; lon: number }[];
   onMapClick: (lat: number, lon: number) => void;
   onStopClick: (stopId: string) => void;
   focusPoint?: { lat: number; lon: number } | null;
@@ -23,6 +24,7 @@ export function MapView({
   stops,
   patternStops,
   savedShapePoints,
+  routedPreviewPoints = [],
   onMapClick,
   onStopClick,
   focusPoint,
@@ -79,6 +81,14 @@ export function MapView({
         type: 'line',
         source: 'shape-saved',
         paint: { 'line-color': '#1e88e5', 'line-width': 4 },
+      });
+
+      map.addSource('routed-preview', { type: 'geojson', data: emptyFC() });
+      map.addLayer({
+        id: 'routed-preview-line',
+        type: 'line',
+        source: 'routed-preview',
+        paint: { 'line-color': '#1b7f4a', 'line-width': 4 },
       });
 
       map.addSource('shape-draft', { type: 'geojson', data: emptyFC() });
@@ -179,6 +189,25 @@ export function MapView({
     if (map.isStyleLoaded()) update();
     else map.once('load', update);
   }, [savedShapePoints]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const update = () => {
+      const source = map.getSource('routed-preview') as maplibregl.GeoJSONSource | undefined;
+      if (!source || routedPreviewPoints.length < 2) {
+        source?.setData(emptyFC());
+        return;
+      }
+      source.setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: routedPreviewPoints.map((p) => [p.lon, p.lat]) },
+        properties: {},
+      });
+    };
+    if (map.isStyleLoaded()) update();
+    else map.once('load', update);
+  }, [routedPreviewPoints]);
 
   useEffect(() => {
     const map = mapRef.current;

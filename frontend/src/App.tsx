@@ -240,7 +240,12 @@ function MapArea({
   const activePatternId = useAppStore((s) => s.activePatternId);
   const addDraftShapePoint = useAppStore((s) => s.addDraftShapePoint);
   const toggleDraftPatternStop = useAppStore((s) => s.toggleDraftPatternStop);
+  const draftPatternStopIds = useAppStore((s) => s.draftPatternStopIds);
+  const routedPreviewPoints = useAppStore((s) => s.routedPreviewPoints);
+  const routedPreviewInfo = useAppStore((s) => s.routedPreviewInfo);
+  const setRoutedPreview = useAppStore((s) => s.setRoutedPreview);
   const [pendingStopLatLon, setPendingStopLatLon] = useState<{ lat: number; lon: number } | null>(null);
+  const [routing, setRouting] = useState(false);
 
   const stopsQuery = useQuery({ queryKey: ['stops', feedVersionId], queryFn: () => api.stops.list(feedVersionId) });
   const savedShapeQuery = useQuery({
@@ -253,6 +258,46 @@ function MapArea({
     queryFn: () => api.patterns.getStops(activePatternId!),
     enabled: !!activePatternId,
   });
+
+  // Al ir uniendo paradas existentes (Modo 1/3, sección 9): cada vez que la
+  // selección cambia, se vuelve a rutear por la red vial automáticamente. La
+  // geometría es solo una propuesta — nunca se guarda hasta "Guardar recorrido".
+  useEffect(() => {
+    if (mapTool !== 'add-pattern-stop' || draftPatternStopIds.length < 2 || !stopsQuery.data) {
+      setRoutedPreview([], null);
+      return;
+    }
+    const byId = new Map(stopsQuery.data.map((s) => [s.id, s]));
+    const waypoints = draftPatternStopIds
+      .map((id) => byId.get(id))
+      .filter((s): s is Stop => !!s)
+      .map((s) => ({ lat: s.stopLat, lon: s.stopLon }));
+    if (waypoints.length < 2) {
+      setRoutedPreview([], null);
+      return;
+    }
+    let cancelled = false;
+    setRouting(true);
+    api.routing
+      .route(waypoints)
+      .then((res) => {
+        if (cancelled) return;
+        setRoutedPreview(
+          res.points.map(([lat, lon]) => ({ lat, lon })),
+          { routed: res.routed, provider: res.provider },
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setRoutedPreview(waypoints, { routed: false, provider: 'error' });
+      })
+      .finally(() => {
+        if (!cancelled) setRouting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapTool, draftPatternStopIds, stopsQuery.data]);
 
   function handleMapClick(lat: number, lon: number) {
     if (mapTool === 'add-stop') {
@@ -276,10 +321,20 @@ function MapArea({
         stops={stopsQuery.data || []}
         patternStops={patternStopsQuery.data || []}
         savedShapePoints={(savedShapeQuery.data || []).map((p) => ({ lat: p.shapePtLat, lon: p.shapePtLon }))}
+        routedPreviewPoints={routedPreviewPoints}
         onMapClick={handleMapClick}
         onStopClick={handleStopClick}
       />
       <div className="attribution-badge">{attribution || '© OpenStreetMap contributors'}</div>
+      {mapTool === 'add-pattern-stop' && draftPatternStopIds.length >= 2 && (
+        <div style={{ position: 'absolute', top: 16, left: 16, background: 'white', borderRadius: 8, padding: '8px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', zIndex: 10, fontSize: 12 }}>
+          {routing
+            ? 'Ruteando por la red vial…'
+            : routedPreviewPoints.length > 0
+              ? `✓ Ruteado por calles (${routedPreviewInfo?.provider ?? 'osrm'})`
+              : '⚠ Sin ruteo — líneas rectas entre paradas'}
+        </div>
+      )}
       {pendingStopLatLon && (
         <StopQuickForm
           feedVersionId={feedVersionId}
@@ -534,6 +589,8 @@ function PatternEditor({ patternId }: { patternId: string }) {
   const clearDraftShapePoints = useAppStore((s) => s.clearDraftShapePoints);
   const draftPatternStopIds = useAppStore((s) => s.draftPatternStopIds);
   const clearDraftPatternStops = useAppStore((s) => s.clearDraftPatternStops);
+  const routedPreviewPoints = useAppStore((s) => s.routedPreviewPoints);
+  const routedPreviewInfo = useAppStore((s) => s.routedPreviewInfo);
 
   const patternStopsQuery = useQuery({ queryKey: ['patternStops', patternId], queryFn: () => api.patterns.getStops(patternId) });
 
@@ -546,12 +603,20 @@ function PatternEditor({ patternId }: { patternId: string }) {
     },
   });
 
-  const saveStops = useMutation({
-    mutationFn: () => api.patterns.replaceStops(patternId, draftPatternStopIds),
+  // Guarda el orden de paradas Y el recorrido ruteado por la red vial entre ellas
+  // en un solo paso — igual que Conveyal construye el pattern uniendo paradas.
+  const saveStopsAndRoute = useMutation({
+    mutationFn: async () => {
+      await api.patterns.replaceStops(patternId, draftPatternStopIds);
+      if (routedPreviewPoints.length >= 2) {
+        await api.patterns.replaceShapePoints(patternId, routedPreviewPoints);
+      }
+    },
     onSuccess: () => {
       clearDraftPatternStops();
       setMapTool('none');
       queryClient.invalidateQueries({ queryKey: ['patternStops', patternId] });
+      queryClient.invalidateQueries({ queryKey: ['shapePoints', patternId] });
     },
   });
 
@@ -587,11 +652,23 @@ function PatternEditor({ patternId }: { patternId: string }) {
 
       {mapTool === 'add-pattern-stop' && (
         <div>
-          <p className="hint">Haz clic en las paradas del mapa, en el orden en que las visita el recorrido ({draftPatternStopIds.length} seleccionadas).</p>
+          <p className="hint">
+            Haz clic en las paradas del mapa, en el orden en que las visita el recorrido ({draftPatternStopIds.length} seleccionadas).
+            El tramo entre cada par se rutea automáticamente por la red vial.
+          </p>
+          {draftPatternStopIds.length >= 2 && (
+            <p className="hint" style={{ color: routedPreviewInfo?.routed ? 'var(--success)' : 'var(--warning)' }}>
+              {routedPreviewInfo?.routed
+                ? `✓ Ruteado por calles (${routedPreviewInfo.provider})`
+                : routedPreviewPoints.length > 0
+                  ? '⚠ Sin ruteo disponible — se guardarán líneas rectas entre paradas'
+                  : 'Calculando ruta…'}
+            </p>
+          )}
           <div className="btn-row">
             <button className="btn secondary" onClick={clearDraftPatternStops}>Limpiar</button>
-            <button className="btn" disabled={draftPatternStopIds.length < 2 || saveStops.isPending} onClick={() => saveStops.mutate()}>
-              {saveStops.isPending ? 'Guardando…' : 'Guardar orden'}
+            <button className="btn" disabled={draftPatternStopIds.length < 2 || saveStopsAndRoute.isPending} onClick={() => saveStopsAndRoute.mutate()}>
+              {saveStopsAndRoute.isPending ? 'Guardando…' : 'Guardar paradas y recorrido'}
             </button>
           </div>
         </div>

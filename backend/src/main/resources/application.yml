@@ -28,8 +28,8 @@ gtfsplatform:
   map:
     tile-url: ${GTFSPLATFORM_MAP_TILE_URL:https://tile.openstreetmap.org/{z}/{x}/{y}.png}
   routing:
-    provider: ${GTFSPLATFORM_ROUTING_PROVIDER:manual}
-    osrm-url: ${GTFSPLATFORM_OSRM_URL:}
+    provider: ${GTFSPLATFORM_ROUTING_PROVIDER:osrm}
+    osrm-url: ${GTFSPLATFORM_OSRM_URL:https://router.project-osrm.org}
   geocoding:
     provider: ${GTFSPLATFORM_GEOCODING_PROVIDER:esri}
     overpass-url: ${GTFSPLATFORM_OVERPASS_URL:https://overpass-api.de/api/interpreter}
