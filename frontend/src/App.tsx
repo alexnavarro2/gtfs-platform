@@ -857,6 +857,42 @@ function PatternEditor({ patternId }: { patternId: string }) {
     },
   });
 
+  // Quitar una parada YA GUARDADA del recorrido (no del borrador que se está
+  // dibujando — eso es clearDraftPatternStops/clearDraftShapePoints arriba).
+  // Recalcula el trazo entre las paradas restantes para que la línea guardada
+  // no quede pasando por un punto que ya no forma parte del recorrido.
+  const removePatternStop = useMutation({
+    mutationFn: async (stopIdToRemove: string) => {
+      const remainingStops = (patternStopsQuery.data || [])
+        .filter((ps) => ps.stop.id !== stopIdToRemove)
+        .map((ps) => ps.stop);
+      await api.patterns.replaceStops(patternId, remainingStops.map((s) => s.id));
+      if (remainingStops.length >= 2) {
+        const routed = await api.routing.route(remainingStops.map((s) => ({ lat: s.stopLat, lon: s.stopLon })));
+        await api.patterns.replaceShapePoints(patternId, routed.points.map(([lat, lon]) => ({ lat, lon })));
+      } else {
+        await api.patterns.replaceShapePoints(patternId, []);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['patternStops', patternId] });
+      queryClient.invalidateQueries({ queryKey: ['shapePoints', patternId] });
+    },
+  });
+
+  // Vaciar todo el recorrido guardado (paradas + trazo) para empezar de cero,
+  // sin tener que ir quitando parada por parada.
+  const clearSavedPattern = useMutation({
+    mutationFn: async () => {
+      await api.patterns.replaceStops(patternId, []);
+      await api.patterns.replaceShapePoints(patternId, []);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['patternStops', patternId] });
+      queryClient.invalidateQueries({ queryKey: ['shapePoints', patternId] });
+    },
+  });
+
   return (
     <div style={{ marginTop: 10, borderTop: '1px dashed var(--border)', paddingTop: 10 }}>
       <h3>Recorrido</h3>
@@ -925,10 +961,50 @@ function PatternEditor({ patternId }: { patternId: string }) {
       )}
 
       <div className="panel-section" style={{ marginTop: 10 }}>
-        <h3>Paradas del recorrido ({patternStopsQuery.data?.length || 0})</h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ margin: 0 }}>Paradas del recorrido ({patternStopsQuery.data?.length || 0})</h3>
+          {(patternStopsQuery.data?.length || 0) > 0 && (
+            <button
+              className="btn danger icon-btn"
+              disabled={clearSavedPattern.isPending || removePatternStop.isPending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    '¿Vaciar el recorrido? Se eliminarán todas sus paradas y el trazo guardado, y tendrás que regenerar el horario. Esta acción no se puede deshacer.',
+                  )
+                ) {
+                  clearSavedPattern.mutate();
+                }
+              }}
+            >
+              Vaciar
+            </button>
+          )}
+        </div>
+        {(removePatternStop.isError || clearSavedPattern.isError) && (
+          <div className="notice ERROR">
+            {((removePatternStop.error || clearSavedPattern.error) as any)?.message}
+          </div>
+        )}
         {(patternStopsQuery.data || []).map((ps, i) => (
           <div key={ps.id} className="list-item">
             <span>{String(i + 1).padStart(2, '0')} — {ps.stop.stopName}</span>
+            <button
+              className="btn danger icon-btn"
+              disabled={removePatternStop.isPending || clearSavedPattern.isPending}
+              title="Quitar del recorrido"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `¿Quitar "${ps.stop.stopName}" del recorrido? Se recalculará el trazo y tendrás que regenerar el horario.`,
+                  )
+                ) {
+                  removePatternStop.mutate(ps.stop.id);
+                }
+              }}
+            >
+              ✕
+            </button>
           </div>
         ))}
       </div>
