@@ -70,6 +70,26 @@ export interface FeedVersion {
   versionNumber: number;
   status: 'DRAFT' | 'VALIDATING' | 'VALID' | 'PUBLISHED' | 'ARCHIVED';
   feedPublisherName?: string;
+  feedPublisherUrl?: string;
+  feedLang?: string;
+  defaultLang?: string;
+  feedStartDate?: string;
+  feedEndDate?: string;
+  feedVersionString?: string;
+  feedContactEmail?: string;
+  feedContactUrl?: string;
+}
+
+export interface FeedInfoRequest {
+  feedPublisherName: string;
+  feedPublisherUrl: string;
+  feedLang: string;
+  defaultLang?: string;
+  feedStartDate?: string;
+  feedEndDate?: string;
+  feedVersionString?: string;
+  feedContactEmail?: string;
+  feedContactUrl?: string;
 }
 
 export interface Agency {
@@ -232,6 +252,7 @@ export const api = {
     list: (feedId: string) => get<FeedVersion[]>(`/feeds/${feedId}/versions`),
     create: (feedId: string) => post<FeedVersion>(`/feeds/${feedId}/versions`),
     get: (id: string) => get<FeedVersion>(`/feed-versions/${id}`),
+    updateFeedInfo: (id: string, body: FeedInfoRequest) => put<FeedVersion>(`/feed-versions/${id}/feed-info`, body),
   },
   agencies: {
     list: (feedVersionId: string) => get<Agency[]>(`/feed-versions/${feedVersionId}/agencies`),

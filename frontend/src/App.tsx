@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getAuthToken, setUnauthorizedHandler } from './api/client';
-import type { AdminUser, Agency, Feed, Route, Stop, ValidationSummary } from './api/client';
+import type { AdminUser, Agency, Feed, FeedInfoRequest, Route, Stop, ValidationSummary } from './api/client';
 import { useAppStore } from './store/useAppStore';
 import { MapView } from './map/MapView';
 
@@ -350,6 +350,106 @@ function AgencySetup({ feedVersionId }: { feedVersionId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Datos del feed (feed_info.txt): publicador, idioma, vigencia. Sin esto no
+// había forma de completarlos para un feed creado desde el portal — el
+// exportador omitía el archivo en silencio si feedPublisherName era null.
+// ---------------------------------------------------------------------------
+function FeedInfoForm({ feedVersionId }: { feedVersionId: string }) {
+  const feedVersionQuery = useQuery({
+    queryKey: ['feedVersion', feedVersionId],
+    queryFn: () => api.feedVersions.get(feedVersionId),
+  });
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<FeedInfoRequest | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const fv = feedVersionQuery.data;
+  useEffect(() => {
+    if (fv && !form) {
+      setForm({
+        feedPublisherName: fv.feedPublisherName || '',
+        feedPublisherUrl: fv.feedPublisherUrl || '',
+        feedLang: fv.feedLang || 'es',
+        feedStartDate: fv.feedStartDate || '',
+        feedEndDate: fv.feedEndDate || '',
+        feedVersionString: fv.feedVersionString || '',
+        feedContactEmail: fv.feedContactEmail || '',
+        feedContactUrl: fv.feedContactUrl || '',
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fv]);
+
+  async function save() {
+    if (!form) return;
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.feedVersions.updateFeedInfo(feedVersionId, form);
+      setSaved(true);
+      queryClient.invalidateQueries({ queryKey: ['feedVersion', feedVersionId] });
+    } catch (e: any) {
+      setError(e.message || 'Error guardando los datos del feed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!form) return null;
+
+  return (
+    <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+      <h3>Datos del feed (feed_info.txt)</h3>
+      <p className="hint">Quién publica este GTFS y hasta cuándo es válido — sin esto, el archivo no se genera al exportar.</p>
+      <div className="field">
+        <label>Nombre del publicador</label>
+        <input value={form.feedPublisherName} onChange={(e) => setForm({ ...form, feedPublisherName: e.target.value })} />
+      </div>
+      <div className="field">
+        <label>Sitio web del publicador</label>
+        <input value={form.feedPublisherUrl} onChange={(e) => setForm({ ...form, feedPublisherUrl: e.target.value })} />
+      </div>
+      <div className="field-row">
+        <div className="field">
+          <label>Idioma</label>
+          <input value={form.feedLang} onChange={(e) => setForm({ ...form, feedLang: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Versión (texto libre)</label>
+          <input value={form.feedVersionString} onChange={(e) => setForm({ ...form, feedVersionString: e.target.value })} />
+        </div>
+      </div>
+      <div className="field-row">
+        <div className="field">
+          <label>Válido desde</label>
+          <input type="date" value={form.feedStartDate} onChange={(e) => setForm({ ...form, feedStartDate: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Válido hasta</label>
+          <input type="date" value={form.feedEndDate} onChange={(e) => setForm({ ...form, feedEndDate: e.target.value })} />
+        </div>
+      </div>
+      <div className="field">
+        <label>Correo de contacto</label>
+        <input value={form.feedContactEmail} onChange={(e) => setForm({ ...form, feedContactEmail: e.target.value })} />
+      </div>
+      {error && <div className="notice ERROR">{error}</div>}
+      {saved && !error && <div className="notice INFO">✓ Guardado</div>}
+      <button
+        className="btn"
+        disabled={busy || !form.feedPublisherName.trim() || !form.feedPublisherUrl.trim() || !form.feedLang.trim()}
+        onClick={save}
+      >
+        {busy ? 'Guardando…' : 'Guardar cambios'}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Agencia: editar los datos de agency.txt después de la creación inicial
 // (AgencySetup arriba solo se muestra una vez, al crear el feed).
 // ---------------------------------------------------------------------------
@@ -362,6 +462,7 @@ function AgencyPanel({ feedVersionId }: { feedVersionId: string }) {
 
   return (
     <div>
+      <FeedInfoForm feedVersionId={feedVersionId} />
       <div className="panel-section">
         <h3>Agencias ({agenciesQuery.data?.length || 0})</h3>
         {(agenciesQuery.data || []).map((a) => (
