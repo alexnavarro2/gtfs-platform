@@ -992,7 +992,101 @@ function RoutesPanel({ feedVersionId, agencyId }: { feedVersionId: string; agenc
         ))}
       </div>
 
+      {activeRoute && <RouteEditForm key={activeRoute.id} route={activeRoute} feedVersionId={feedVersionId} />}
       {activeRoute && <PatternsPanel route={activeRoute} />}
+    </div>
+  );
+}
+
+// Edición de una ruta ya creada — "Nueva ruta" arriba solo cubre la creación;
+// sin esto no había forma de cambiar el color (ni nada más) después.
+function RouteEditForm({ route, feedVersionId }: { route: Route; feedVersionId: string }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    routeShortName: route.routeShortName || '',
+    routeLongName: route.routeLongName || '',
+    routeDesc: route.routeDesc || '',
+    routeUrl: route.routeUrl || '',
+    routeColor: route.routeColor || '1E88E5',
+    routeTextColor: route.routeTextColor || 'FFFFFF',
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.routes.update(route.id, form);
+      setSaved(true);
+      queryClient.invalidateQueries({ queryKey: ['routes', feedVersionId] });
+    } catch (e: any) {
+      setError(e.message || 'Error guardando la ruta');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="panel-section" style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+      <h3>Editar ruta {route.routeShortName}</h3>
+      <div className="field-row">
+        <div className="field">
+          <label>Clave corta</label>
+          <input value={form.routeShortName} onChange={(e) => setForm({ ...form, routeShortName: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Color</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              type="color"
+              style={{ width: 40, padding: 2 }}
+              value={`#${form.routeColor}`}
+              onChange={(e) => setForm({ ...form, routeColor: e.target.value.replace('#', '').toUpperCase() })}
+            />
+            <input
+              value={form.routeColor}
+              onChange={(e) => setForm({ ...form, routeColor: e.target.value.replace('#', '').toUpperCase() })}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="field">
+        <label>Nombre largo</label>
+        <input value={form.routeLongName} onChange={(e) => setForm({ ...form, routeLongName: e.target.value })} />
+      </div>
+      <div className="field">
+        <label>Descripción</label>
+        <input value={form.routeDesc} onChange={(e) => setForm({ ...form, routeDesc: e.target.value })} />
+      </div>
+      <div className="field-row">
+        <div className="field">
+          <label>Sitio web</label>
+          <input value={form.routeUrl} onChange={(e) => setForm({ ...form, routeUrl: e.target.value })} />
+        </div>
+        <div className="field">
+          <label>Color del texto</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              type="color"
+              style={{ width: 40, padding: 2 }}
+              value={`#${form.routeTextColor}`}
+              onChange={(e) => setForm({ ...form, routeTextColor: e.target.value.replace('#', '').toUpperCase() })}
+            />
+            <input
+              value={form.routeTextColor}
+              onChange={(e) => setForm({ ...form, routeTextColor: e.target.value.replace('#', '').toUpperCase() })}
+            />
+          </div>
+        </div>
+      </div>
+      {error && <div className="notice ERROR">{error}</div>}
+      {saved && !error && <div className="notice INFO">✓ Guardado</div>}
+      <button className="btn" disabled={busy || !form.routeShortName.trim()} onClick={save}>
+        {busy ? 'Guardando…' : 'Guardar cambios'}
+      </button>
     </div>
   );
 }

@@ -54,12 +54,21 @@ public class RouteController {
     public Route update(@PathVariable UUID id, @RequestBody Route update) {
         Route existing = routeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Route not found: " + id));
-        existing.setGtfsId(update.getGtfsId());
-        existing.setAgency(update.getAgency());
+        // gtfs_id/agency_id/route_type son NOT NULL — un formulario de edición que
+        // solo mande el color (como el nuevo editor de rutas) no debe poder dejarlos
+        // en NULL. Mismo bug ya corregido en AgencyController.update().
+        if (update.getGtfsId() != null && !update.getGtfsId().isBlank()) {
+            existing.setGtfsId(update.getGtfsId());
+        }
+        if (update.getAgency() != null) {
+            existing.setAgency(update.getAgency());
+        }
+        if (update.getRouteType() != null) {
+            existing.setRouteType(update.getRouteType());
+        }
         existing.setRouteShortName(update.getRouteShortName());
         existing.setRouteLongName(update.getRouteLongName());
         existing.setRouteDesc(update.getRouteDesc());
-        existing.setRouteType(update.getRouteType());
         existing.setRouteUrl(update.getRouteUrl());
         existing.setRouteColor(update.getRouteColor());
         existing.setRouteTextColor(update.getRouteTextColor());
@@ -67,7 +76,6 @@ public class RouteController {
         existing.setContinuousPickup(update.getContinuousPickup());
         existing.setContinuousDropOff(update.getContinuousDropOff());
         existing.setUpdatedAt(OffsetDateTime.now());
-        existing.setUpdatedBy(update.getUpdatedBy());
         return routeRepository.save(existing);
     }
 

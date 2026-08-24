@@ -122,9 +122,12 @@ export interface Route {
   agency: { id: string };
   routeShortName?: string;
   routeLongName?: string;
+  routeDesc?: string;
   routeType: number;
+  routeUrl?: string;
   routeColor?: string;
   routeTextColor?: string;
+  routeSortOrder?: number;
 }
 
 export interface RoutePattern {
@@ -273,6 +276,7 @@ export const api = {
     list: (feedVersionId: string) => get<Route[]>(`/feed-versions/${feedVersionId}/routes`),
     create: (feedVersionId: string, body: Partial<Route>) =>
       post<Route>(`/feed-versions/${feedVersionId}/routes`, body),
+    update: (id: string, body: Partial<Route>) => put<Route>(`/routes/${id}`, body),
   },
   patterns: {
     list: (routeId: string) => get<RoutePattern[]>(`/routes/${routeId}/patterns`),
