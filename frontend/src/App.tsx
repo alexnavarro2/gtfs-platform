@@ -649,7 +649,23 @@ function StopQuickForm({
 function StopsPanel({ feedVersionId }: { feedVersionId: string }) {
   const mapTool = useAppStore((s) => s.mapTool);
   const setMapTool = useAppStore((s) => s.setMapTool);
+  const queryClient = useQueryClient();
   const stopsQuery = useQuery({ queryKey: ['stops', feedVersionId], queryFn: () => api.stops.list(feedVersionId) });
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const deleteStop = useMutation({
+    mutationFn: (id: string) => api.stops.remove(id),
+    onSuccess: () => {
+      setDeleteError(null);
+      queryClient.invalidateQueries({ queryKey: ['stops', feedVersionId] });
+    },
+    onError: (e: any) => setDeleteError(e.message || 'Error eliminando la parada'),
+  });
+
+  function handleDelete(s: Stop) {
+    if (!window.confirm(`¿Eliminar la parada "${s.stopName || s.gtfsId}"? Esta acción no se puede deshacer.`)) return;
+    deleteStop.mutate(s.id);
+  }
 
   return (
     <div>
@@ -664,9 +680,21 @@ function StopsPanel({ feedVersionId }: { feedVersionId: string }) {
       </div>
       <div className="panel-section">
         <h3>Paradas ({stopsQuery.data?.length || 0})</h3>
+        {deleteError && <div className="notice ERROR">{deleteError}</div>}
         {(stopsQuery.data || []).map((s) => (
           <div className="list-item" key={s.id}>
             <span>{s.stopName || '(sin nombre)'} <span style={{ color: '#999' }}>· {s.gtfsId}</span></span>
+            <button
+              className="btn danger icon-btn"
+              disabled={deleteStop.isPending}
+              title="Eliminar parada"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(s);
+              }}
+            >
+              ✕
+            </button>
           </div>
         ))}
       </div>

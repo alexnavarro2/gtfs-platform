@@ -135,6 +135,7 @@ h1, h2, h3, h4, .mont { font-family: 'Montserrat', sans-serif; }
 .btn.block { width: 100%; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-row { display: flex; gap: 8px; margin-top: 6px; }
+.icon-btn { padding: 3px 8px; font-size: 12px; flex-shrink: 0; }
 
 .list-item {
   display: flex;
