@@ -42,7 +42,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   draftPatternStopIds: [],
   routedPreviewPoints: [],
   routedPreviewInfo: null,
-  setFeed: (feedId, feedVersionId) => set({ feedId, feedVersionId }),
+  setFeed: (feedId, feedVersionId) =>
+    set({
+      feedId,
+      feedVersionId,
+      // Al cambiar de feed, todo lo que dependía del feed anterior (agencia,
+      // ruta/patrón activo, borradores) queda inválido — sin esto, un feedId
+      // o agencyId de otro feed se arrastraba y rompía las consultas.
+      agencyId: null,
+      activeRouteId: null,
+      activePatternId: null,
+      activeCalendarId: null,
+      mapTool: 'none',
+      draftShapePoints: [],
+      draftPatternStopIds: [],
+      routedPreviewPoints: [],
+      routedPreviewInfo: null,
+    }),
   setAgency: (agencyId) => set({ agencyId }),
   setActiveRoute: (routeId) => set({ activeRouteId: routeId, activePatternId: null }),
   setActivePattern: (patternId) =>

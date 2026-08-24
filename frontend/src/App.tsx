@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api/client';
-import type { Route, Stop, ValidationSummary } from './api/client';
+import type { Feed, Route, Stop, ValidationSummary } from './api/client';
 import { useAppStore } from './store/useAppStore';
 import { MapView } from './map/MapView';
 
@@ -85,12 +85,15 @@ function Bootstrap() {
 // Shell principal: topbar + sidebar de herramientas + mapa (sección 5)
 // ---------------------------------------------------------------------------
 function Shell() {
+  const feedId = useAppStore((s) => s.feedId);
   const feedVersionId = useAppStore((s) => s.feedVersionId)!;
   const agencyId = useAppStore((s) => s.agencyId);
   const setAgency = useAppStore((s) => s.setAgency);
+  const setFeed = useAppStore((s) => s.setFeed);
   const [tab, setTab] = useState<Tab>(agencyId ? 'stops' : 'routes');
 
   const configQuery = useQuery({ queryKey: ['config'], queryFn: api.config });
+  const feedsQuery = useQuery({ queryKey: ['feeds'], queryFn: api.feeds.list });
   const feedVersionQuery = useQuery({
     queryKey: ['feedVersion', feedVersionId],
     queryFn: () => api.feedVersions.get(feedVersionId),
@@ -106,13 +109,22 @@ function Shell() {
     }
   }, [agenciesQuery.data, agencyId, setAgency]);
 
+  async function switchFeed(newFeedId: string) {
+    if (newFeedId === feedId) return;
+    const versions = await api.feedVersions.list(newFeedId);
+    if (versions.length === 0) return;
+    const latest = versions.reduce((a, b) => (a.versionNumber > b.versionNumber ? a : b));
+    setFeed(newFeedId, latest.id);
+    setTab('stops');
+  }
+
   if (!agenciesQuery.isLoading && (!agenciesQuery.data || agenciesQuery.data.length === 0)) {
     return <AgencySetup feedVersionId={feedVersionId} />;
   }
 
   return (
     <div className="app-shell">
-      <Topbar feedVersion={feedVersionQuery.data} />
+      <Topbar feedVersion={feedVersionQuery.data} feeds={feedsQuery.data} activeFeedId={feedId} onSwitchFeed={switchFeed} />
       <div className="main-area">
         <div className="sidebar">
           <div className="tabs">
@@ -206,14 +218,33 @@ function TabButton({
   );
 }
 
-function Topbar({ feedVersion }: { feedVersion?: { feed: { name: string }; versionNumber: number; status: string } }) {
+function Topbar({
+  feedVersion,
+  feeds,
+  activeFeedId,
+  onSwitchFeed,
+}: {
+  feedVersion?: { feed: { name: string }; versionNumber: number; status: string };
+  feeds?: Feed[];
+  activeFeedId?: string | null;
+  onSwitchFeed?: (feedId: string) => void;
+}) {
   return (
     <div className="topbar">
       <img className="brand-logo" src="/imtes-logo.png" alt="IMTES - Instituto de Movilidad y Transporte para el Estado de Sonora" />
       <div className="brand">GTFS Platform</div>
+      {feeds && feeds.length > 0 && (
+        <select value={activeFeedId ?? ''} onChange={(e) => onSwitchFeed?.(e.target.value)}>
+          {feeds.map((f) => (
+            <option key={f.id} value={f.id} style={{ color: '#000' }}>
+              {f.name}
+            </option>
+          ))}
+        </select>
+      )}
       {feedVersion && (
         <div className="brand-sub">
-          {feedVersion.feed.name} · v{feedVersion.versionNumber}
+          v{feedVersion.versionNumber}
         </div>
       )}
       <div className="spacer" />
