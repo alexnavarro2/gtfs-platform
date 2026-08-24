@@ -303,7 +303,10 @@ function MapArea({
   }, [mapTool, draftPatternStopIds, draftShapePoints, stopsQuery.data]);
 
   function handleMapClick(lat: number, lon: number) {
-    if (mapTool === 'add-stop') {
+    if (mapTool === 'add-stop' || mapTool === 'add-pattern-stop') {
+      // En "Agregar paradas", un clic fuera de una parada existente ofrece
+      // crear una nueva ahí mismo (sección 6) y sumarla directo al recorrido —
+      // sin esto había que salir a la pestaña Paradas y volver.
       setPendingStopLatLon({ lat, lon });
     } else if (mapTool === 'draw-shape') {
       addDraftShapePoint({ lat, lon });
@@ -345,10 +348,16 @@ function MapArea({
           lat={pendingStopLatLon.lat}
           lon={pendingStopLatLon.lon}
           onClose={() => setPendingStopLatLon(null)}
-          onSaved={() => {
+          onSaved={(stop) => {
             setPendingStopLatLon(null);
-            setMapTool('none');
             queryClient.invalidateQueries({ queryKey: ['stops', feedVersionId] });
+            if (mapTool === 'add-pattern-stop') {
+              // Sumarla al recorrido que se está armando y seguir en la misma
+              // herramienta — igual que agregar cualquier otra parada existente.
+              toggleDraftPatternStop(stop.id);
+            } else {
+              setMapTool('none');
+            }
           }}
         />
       )}
@@ -367,7 +376,7 @@ function StopQuickForm({
   lat: number;
   lon: number;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (stop: Stop) => void;
 }) {
   const [name, setName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
@@ -394,14 +403,14 @@ function StopQuickForm({
   async function save() {
     setBusy(true);
     try {
-      await api.stops.create(feedVersionId, {
+      const stop = await api.stops.create(feedVersionId, {
         stopName: name,
         stopLat: lat,
         stopLon: lon,
         locationType: 0,
         wheelchairBoarding: wheelchair ? 1 : 0,
       });
-      onSaved();
+      onSaved(stop);
     } finally {
       setBusy(false);
     }
@@ -674,7 +683,8 @@ function PatternEditor({ patternId }: { patternId: string }) {
         <div>
           <p className="hint">
             Haz clic en las paradas del mapa, en el orden en que las visita el recorrido ({draftPatternStopIds.length} seleccionadas).
-            El tramo entre cada par se rutea automáticamente por la red vial.
+            Si haces clic donde no hay una parada, se crea una nueva ahí mismo y se suma al recorrido. El tramo entre
+            cada par se rutea automáticamente por la red vial.
           </p>
           {draftPatternStopIds.length >= 2 && (
             <p className="hint" style={{ color: routedPreviewInfo?.routed ? 'var(--success)' : 'var(--warning)' }}>

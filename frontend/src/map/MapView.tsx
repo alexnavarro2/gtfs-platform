@@ -113,7 +113,11 @@ export function MapView({
           if (stopId) onStopClickRef.current(stopId);
           return;
         }
-        if (mapToolRef.current === 'add-stop' || mapToolRef.current === 'draw-shape') {
+        if (
+          mapToolRef.current === 'add-stop' ||
+          mapToolRef.current === 'draw-shape' ||
+          mapToolRef.current === 'add-pattern-stop'
+        ) {
           onMapClickRef.current(e.lngLat.lat, e.lngLat.lng);
         }
       });
