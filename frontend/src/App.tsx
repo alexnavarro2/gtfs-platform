@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getAuthToken, setUnauthorizedHandler } from './api/client';
 import type { AdminUser, Agency, Feed, FeedInfoRequest, Route, Stop, ValidationSummary } from './api/client';
@@ -462,6 +463,11 @@ function AgencyPanel({ feedVersionId }: { feedVersionId: string }) {
 
   return (
     <div>
+      <SectionIntro title="¿Qué es esto?">
+        Aquí defines quién publica este GTFS (<code>feed_info.txt</code>) y la o las agencias que operan las rutas
+        (<code>agency.txt</code>). Complétalo una sola vez por feed — Google Maps, Moovit y demás apps lo usan para
+        saber a quién atribuir el servicio y hasta cuándo confiar en los datos.
+      </SectionIntro>
       <FeedInfoForm feedVersionId={feedVersionId} />
       <div className="panel-section">
         <h3>Agencias ({agenciesQuery.data?.length || 0})</h3>
@@ -594,6 +600,19 @@ function TabButton({
   return (
     <div className={`tab ${current === value ? 'active' : ''}`} onClick={() => onClick(value)}>
       {label}
+    </div>
+  );
+}
+
+// Explica, en el lenguaje de la especificación GTFS, qué representa esta
+// sección y qué se espera que haga el usuario ahí — para alguien nuevo en
+// GTFS, "Rutas" o "Calendarios" por sí solos no dicen a qué archivo/concepto
+// del estándar corresponden ni por dónde empezar.
+function SectionIntro({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="section-intro">
+      <div className="section-intro-title">{title}</div>
+      <p style={{ margin: 0 }}>{children}</p>
     </div>
   );
 }
@@ -902,6 +921,11 @@ function StopsPanel({ feedVersionId }: { feedVersionId: string }) {
 
   return (
     <div>
+      <SectionIntro title="¿Qué es esto?">
+        <code>stops.txt</code>: las ubicaciones físicas donde suben y bajan pasajeros. Créalas aquí antes de armar
+        rutas — cada parada se reutiliza en tantos recorridos como haga falta, así que conviene primero mapear las
+        paradas reales de tu ciudad y después ir a "Rutas" a unirlas en recorridos.
+      </SectionIntro>
       <div className="panel-section">
         <h3>Herramienta</h3>
         <div className="tool-toggle">
@@ -959,6 +983,12 @@ function RoutesPanel({ feedVersionId, agencyId }: { feedVersionId: string; agenc
 
   return (
     <div>
+      <SectionIntro title="¿Qué es esto?">
+        <code>routes.txt</code>: cada línea que operas (p. ej. "18 — Hospitales-Universidades"). Al seleccionar una
+        ruta de la lista se abren sus <strong>sentidos</strong> (IDA/REGRESO u otras variantes), donde defines el
+        recorrido por calles, las paradas que visita y el horario — normalmente: crea la ruta, agrega un sentido,
+        arma su recorrido y por último genera el horario.
+      </SectionIntro>
       <div className="panel-section">
         <h3>Nueva ruta</h3>
         <div className="field-row">
@@ -1108,6 +1138,11 @@ function PatternsPanel({ route }: { route: Route }) {
 
   return (
     <div className="panel-section">
+      <SectionIntro title="¿Qué es un sentido?">
+        Es la variante de recorrido de esta ruta — normalmente IDA y REGRESO, aunque puede haber más si hay ramales.
+        Cada sentido tiene su propio trazo por calles y su propio orden de paradas, aunque compartan número y color
+        de ruta. Internamente es lo que GTFS agrupa como <code>trips.txt</code> que comparten <code>shape_id</code>.
+      </SectionIntro>
       <h3>Sentidos de {route.routeShortName}</h3>
       <div className="field-row">
         <div className="field">
@@ -1229,6 +1264,11 @@ function PatternEditor({ patternId }: { patternId: string }) {
   return (
     <div style={{ marginTop: 10, borderTop: '1px dashed var(--border)', paddingTop: 10 }}>
       <h3>Recorrido</h3>
+      <SectionIntro title="¿Qué es esto?">
+        Qué paradas visita este sentido y en qué orden (<code>stop_times.txt</code>), y el trazo por calles que sigue
+        el vehículo (<code>shapes.txt</code>). Usa "📍 Agregar paradas" para lo más común — unir paradas ya creadas,
+        se rutea solo por la red vial. "✏️ Dibujar" es para trazar la geometría a mano libre y no agrega paradas.
+      </SectionIntro>
       <div className="tool-toggle">
         <button
           className={mapTool === 'draw-shape' ? 'active' : ''}
@@ -1409,6 +1449,12 @@ function ScheduleEditor({ patternId }: { patternId: string }) {
   return (
     <div className="panel-section" style={{ marginTop: 10 }}>
       <h3>Horario</h3>
+      <SectionIntro title="¿Qué es esto?">
+        Genera los viajes (<code>trips.txt</code>) y sus horas de paso en cada parada (<code>stop_times.txt</code>)
+        para este recorrido, sobre un calendario de servicio ya creado. "Frecuencia" crea un solo viaje que se repite
+        cada X minutos (<code>frequencies.txt</code>) — lo normal en una ruta urbana. "Horario explícito" crea un
+        viaje por cada hora de salida que escribas, útil si el servicio no es regular.
+      </SectionIntro>
       {(calendarsQuery.data || []).length === 0 && (
         <div className="notice WARNING">Crea primero un calendario en la pestaña "Calendarios".</div>
       )}
@@ -1531,6 +1577,11 @@ function CalendarsPanel({ feedVersionId }: { feedVersionId: string }) {
 
   return (
     <div>
+      <SectionIntro title="¿Qué es esto?">
+        <code>calendar.txt</code>: los patrones de servicio — qué días de la semana opera y en qué rango de fechas
+        (p. ej. "Lunes a Viernes" o "Sábados y domingos"). Créalos aquí y luego asígnalos al generar el horario de
+        cada recorrido, en la pestaña "Rutas" — un mismo recorrido puede tener horarios distintos según el calendario.
+      </SectionIntro>
       <div className="panel-section">
         <h3>Nuevo calendario</h3>
         <div className="field">
@@ -1585,6 +1636,12 @@ function FaresPanel({ feedVersionId }: { feedVersionId: string }) {
 
   return (
     <div>
+      <SectionIntro title="¿Qué es esto?">
+        <code>fare_products.txt</code> (Fares V2, la forma vigente de definir tarifas en GTFS): el costo de un
+        viaje. Esta pantalla solo cubre el caso simple — nombre, monto y moneda, aplicable a todo el feed. Asociar
+        una tarifa a una ruta específica, a una categoría de pasajero o a un medio de pago (tarjeta, efectivo) es
+        parte del estándar pero todavía no tiene interfaz aquí.
+      </SectionIntro>
       <div className="panel-section">
         <h3>Nueva tarifa</h3>
         <div className="field">
@@ -1648,6 +1705,12 @@ function ValidationPanel({ feedVersionId }: { feedVersionId: string }) {
 
   return (
     <div>
+      <SectionIntro title="¿Qué es esto?">
+        Empaqueta todo lo que armaste en un <code>gtfs.zip</code> y lo revisa contra las reglas del estándar.
+        "Rápida" corre validaciones propias de esta plataforma; "Completa" usa el validador oficial de MobilityData
+        — el mismo que usan Google Transit y otras plataformas de consumo. Corrige los errores (rojo) antes de
+        publicar; las advertencias son buenas prácticas, no bloquean.
+      </SectionIntro>
       <div className="panel-section">
         <h3>Generar GTFS</h3>
         <button className="btn block" disabled={busy !== null} onClick={runExport}>
@@ -1712,6 +1775,11 @@ function AdminPanel({ currentUserId }: { currentUserId: string }) {
 
   return (
     <div>
+      <SectionIntro title="¿Qué es esto?">
+        No es parte del estándar GTFS — es la administración de la plataforma. Aquí ves quién está registrado y le
+        cambias el rol. Por ahora solo ADMIN tiene un efecto real (administra usuarios y ve todos los feeds, no solo
+        los propios); EDITOR y VIEWER quedan como etiqueta para uso futuro, todavía no restringen nada.
+      </SectionIntro>
       <div className="panel-section">
         <h3>Usuarios registrados ({usersQuery.data?.length || 0})</h3>
         {usersQuery.isLoading && <div className="hint">Cargando…</div>}
