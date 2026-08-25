@@ -9,6 +9,7 @@ import type {
   FareMedia,
   FareProduct,
   FeedInfoRequest,
+  KmlBulkRoutesImportResult,
   KmlPatternImportResult,
   KmlStopsImportResult,
   RiderCategory,
@@ -1028,6 +1029,69 @@ function StopsPanel({ feedVersionId }: { feedVersionId: string }) {
   );
 }
 
+// Importar varias rutas de un jalón desde un solo KML: una LineString por
+// Placemark se convierte en una ruta + sentido nueva (usando el nombre del
+// Placemark), emparejando paradas cercanas igual que el import de un solo
+// recorrido — pensado para digitalizar de una vez un mapa de red completo
+// (Google Earth/My Maps/QGIS) en vez de importar ruta por ruta.
+function KmlRoutesImportSection({ feedVersionId, agencyId }: { feedVersionId: string; agencyId: string }) {
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [radius, setRadius] = useState(40);
+  const [result, setResult] = useState<KmlBulkRoutesImportResult | null>(null);
+
+  const importMutation = useMutation({
+    mutationFn: (f: File) => api.routes.importKml(feedVersionId, agencyId, f, radius),
+    onSuccess: (res) => {
+      setResult(res);
+      setFile(null);
+      queryClient.invalidateQueries({ queryKey: ['routes', feedVersionId] });
+    },
+  });
+
+  return (
+    <div className="panel-section">
+      <h3>Importar varias rutas desde KML</h3>
+      <p className="hint">
+        Si tu KML trae una línea por cada ruta (un Placemark-LineString por ruta), se crea una ruta y un sentido
+        nuevo por cada una — usando el nombre del Placemark como nombre de la ruta — y se le emparejan las paradas
+        del feed que caigan cerca. Importa primero las paradas en la pestaña "Paradas".
+      </p>
+      <div className="field-row">
+        <div className="field">
+          <label>Archivo KML</label>
+          <input type="file" accept=".kml" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        </div>
+        <div className="field">
+          <label>Radio de emparejado (m)</label>
+          <input type="number" value={radius} onChange={(e) => setRadius(Number(e.target.value))} />
+        </div>
+      </div>
+      {importMutation.isError && <div className="notice ERROR">{(importMutation.error as any)?.message}</div>}
+      <button
+        className="btn block"
+        disabled={!file || importMutation.isPending}
+        onClick={() => file && importMutation.mutate(file)}
+      >
+        {importMutation.isPending ? 'Importando…' : 'Importar rutas'}
+      </button>
+      {result && (
+        <div className="notice INFO" style={{ marginTop: 6 }}>
+          {result.routeCount} ruta{result.routeCount === 1 ? '' : 's'} creada{result.routeCount === 1 ? '' : 's'}:
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {result.routes.map((r) => (
+              <li key={r.routeId}>
+                {r.routeName} — {r.pattern.matchedStopCount} parada{r.pattern.matchedStopCount === 1 ? '' : 's'}{' '}
+                emparejada{r.pattern.matchedStopCount === 1 ? '' : 's'}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Rutas + Patrones (sección 7-12)
 // ---------------------------------------------------------------------------
@@ -1078,6 +1142,8 @@ function RoutesPanel({ feedVersionId, agencyId }: { feedVersionId: string; agenc
           {createRoute.isPending ? 'Creando…' : 'Crear ruta'}
         </button>
       </div>
+
+      <KmlRoutesImportSection feedVersionId={feedVersionId} agencyId={agencyId} />
 
       <div className="panel-section">
         <h3>Rutas ({routesQuery.data?.length || 0})</h3>

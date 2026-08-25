@@ -172,6 +172,18 @@ export interface KmlPatternImportResult {
   matchedStops: KmlMatchedStopSummary[];
 }
 
+export interface KmlRouteImportResult {
+  routeId: string;
+  routeName: string;
+  patternId: string;
+  pattern: KmlPatternImportResult;
+}
+
+export interface KmlBulkRoutesImportResult {
+  routeCount: number;
+  routes: KmlRouteImportResult[];
+}
+
 export interface ServiceCalendar {
   id: string;
   gtfsId?: string;
@@ -356,6 +368,14 @@ export const api = {
     create: (feedVersionId: string, body: Partial<Route>) =>
       post<Route>(`/feed-versions/${feedVersionId}/routes`, body),
     update: (id: string, body: Partial<Route>) => put<Route>(`/routes/${id}`, body),
+    importKml: (feedVersionId: string, agencyId: string, file: File, matchRadiusMeters: number) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return request<KmlBulkRoutesImportResult>(
+        `/feed-versions/${feedVersionId}/routes/import-kml?agencyId=${agencyId}&matchRadiusMeters=${matchRadiusMeters}`,
+        { method: 'POST', body: formData as any },
+      );
+    },
   },
   patterns: {
     list: (routeId: string) => get<RoutePattern[]>(`/routes/${routeId}/patterns`),

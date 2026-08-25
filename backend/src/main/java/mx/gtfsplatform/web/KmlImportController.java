@@ -45,4 +45,23 @@ public class KmlImportController {
             throw new IllegalArgumentException("No se pudo leer el KML: " + e.getMessage());
         }
     }
+
+    // KML con varias rutas (una LineString por Placemark): crea una ruta + sentido nuevo
+    // por cada una, en vez de limitarse al sentido que el usuario ya tenga abierto.
+    @PostMapping("/api/v1/feed-versions/{feedVersionId}/routes/import-kml")
+    public KmlImportService.BulkRoutesImportResult importRoutes(
+            @PathVariable UUID feedVersionId,
+            @RequestParam("agencyId") UUID agencyId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "matchRadiusMeters", defaultValue = "40") double matchRadiusMeters) {
+        try {
+            return kmlImportService.importRoutesFromKml(feedVersionId, agencyId, file.getInputStream(), matchRadiusMeters);
+        } catch (NoSuchElementException e) {
+            throw new ResourceNotFoundException(e.getMessage());
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("No se pudo leer el KML: " + e.getMessage());
+        }
+    }
 }
