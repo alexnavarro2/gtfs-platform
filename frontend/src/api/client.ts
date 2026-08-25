@@ -145,6 +145,33 @@ export interface PatternStop {
   stop: Stop;
 }
 
+export interface KmlStopSummary {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  geocoded: boolean;
+}
+
+export interface KmlStopsImportResult {
+  totalPoints: number;
+  geocodedCount: number;
+  stops: KmlStopSummary[];
+}
+
+export interface KmlMatchedStopSummary {
+  id: string;
+  name: string;
+  distanceMeters: number;
+}
+
+export interface KmlPatternImportResult {
+  shapePointCount: number;
+  matchedStopCount: number;
+  matchRadiusMeters: number;
+  matchedStops: KmlMatchedStopSummary[];
+}
+
 export interface ServiceCalendar {
   id: string;
   gtfsId?: string;
@@ -315,6 +342,14 @@ export const api = {
     remove: (id: string) => del<void>(`/stops/${id}`),
     near: (lat: number, lon: number, radiusMeters: number) =>
       get<Stop[]>(`/stops/near?lat=${lat}&lon=${lon}&radiusMeters=${radiusMeters}`),
+    importKml: (feedVersionId: string, file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return request<KmlStopsImportResult>(`/feed-versions/${feedVersionId}/stops/import-kml`, {
+        method: 'POST',
+        body: formData as any,
+      });
+    },
   },
   routes: {
     list: (feedVersionId: string) => get<Route[]>(`/feed-versions/${feedVersionId}/routes`),
@@ -338,6 +373,14 @@ export const api = {
         `/patterns/${patternId}/stops`,
         stopIds.map((stopId) => ({ stopId })),
       ),
+    importKml: (patternId: string, file: File, matchRadiusMeters: number) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return request<KmlPatternImportResult>(
+        `/patterns/${patternId}/import-kml?matchRadiusMeters=${matchRadiusMeters}`,
+        { method: 'POST', body: formData as any },
+      );
+    },
   },
   calendars: {
     list: (feedVersionId: string) => get<ServiceCalendar[]>(`/feed-versions/${feedVersionId}/calendars`),

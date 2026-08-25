@@ -9,6 +9,8 @@ import type {
   FareMedia,
   FareProduct,
   FeedInfoRequest,
+  KmlPatternImportResult,
+  KmlStopsImportResult,
   RiderCategory,
   Route,
   Stop,
@@ -906,6 +908,61 @@ function StopQuickForm({
   );
 }
 
+// Importar paradas desde un KML: cada Placemark-punto se crea como parada,
+// nombrada por la intersección más cercana — la misma consulta que dispara el
+// formulario manual de "nueva parada" en el mapa, así que el resultado es
+// indistinguible de haberlas creado ahí una por una.
+function KmlStopsImportSection({ feedVersionId }: { feedVersionId: string }) {
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [result, setResult] = useState<KmlStopsImportResult | null>(null);
+
+  const importMutation = useMutation({
+    mutationFn: (f: File) => api.stops.importKml(feedVersionId, f),
+    onSuccess: (res) => {
+      setResult(res);
+      setFile(null);
+      queryClient.invalidateQueries({ queryKey: ['stops', feedVersionId] });
+    },
+  });
+
+  return (
+    <div className="panel-section">
+      <h3>Importar paradas desde KML</h3>
+      <p className="hint">
+        Cada punto del KML se crea como parada, nombrada por la intersección más cercana — igual que si la hubieras
+        creado a mano en el mapa. Si no se encuentra una intersección cercana, se usa el nombre del punto en el KML
+        (o "Parada importada").
+      </p>
+      <input
+        type="file"
+        accept=".kml"
+        onChange={(e) => setFile(e.target.files?.[0] || null)}
+      />
+      {importMutation.isError && (
+        <div className="notice ERROR">{(importMutation.error as any)?.message}</div>
+      )}
+      <button
+        className="btn block"
+        style={{ marginTop: 6 }}
+        disabled={!file || importMutation.isPending}
+        onClick={() => file && importMutation.mutate(file)}
+      >
+        {importMutation.isPending ? 'Importando…' : 'Importar KML'}
+      </button>
+      {result && (
+        <div className="notice INFO" style={{ marginTop: 6 }}>
+          {result.totalPoints} punto{result.totalPoints === 1 ? '' : 's'} importado{result.totalPoints === 1 ? '' : 's'}
+          {' '}· {result.geocodedCount} con nombre por intersección
+          {result.geocodedCount < result.totalPoints && (
+            <> · {result.totalPoints - result.geocodedCount} sin match, revisa sus nombres</>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Paradas
 // ---------------------------------------------------------------------------
@@ -946,6 +1003,7 @@ function StopsPanel({ feedVersionId }: { feedVersionId: string }) {
         </div>
         <p className="hint">Activa la herramienta y haz clic en el mapa para crear una parada.</p>
       </div>
+      <KmlStopsImportSection feedVersionId={feedVersionId} />
       <div className="panel-section">
         <h3>Paradas ({stopsQuery.data?.length || 0})</h3>
         {deleteError && <div className="notice ERROR">{deleteError}</div>}
@@ -1196,6 +1254,85 @@ function PatternsPanel({ route }: { route: Route }) {
   );
 }
 
+// Importar el trazo de un recorrido desde un KML y, con las paradas que ya
+// existan en el feed, emparejarlas por cercanía al trazo (ordenadas por su
+// posición a lo largo de la línea) — reemplaza el recorrido guardado, igual
+// que "Guardar paradas y recorrido"/"Vaciar" ya hacían.
+function KmlPatternImportSection({ patternId }: { patternId: string }) {
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [radius, setRadius] = useState(40);
+  const [result, setResult] = useState<KmlPatternImportResult | null>(null);
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['patternStops', patternId] });
+    queryClient.invalidateQueries({ queryKey: ['shapePoints', patternId] });
+    queryClient.invalidateQueries({ queryKey: ['trips', patternId] });
+  };
+
+  const importMutation = useMutation({
+    mutationFn: (f: File) => api.patterns.importKml(patternId, f, radius),
+    onSuccess: (res) => {
+      setResult(res);
+      setFile(null);
+      invalidate();
+    },
+  });
+
+  function handleImport() {
+    if (!file) return;
+    if (
+      !window.confirm(
+        'Esto reemplaza el trazo y las paradas guardadas de este recorrido con lo que traiga el KML. Tendrás que regenerar el horario después. ¿Continuar?',
+      )
+    ) {
+      return;
+    }
+    importMutation.mutate(file);
+  }
+
+  return (
+    <div className="panel-section" style={{ marginTop: 10 }}>
+      <h3>Importar recorrido desde KML</h3>
+      <p className="hint">
+        El trazo (LineString) del KML se guarda como el recorrido, y las paradas del feed que caigan cerca de la
+        línea se suman al recorrido en el orden en que aparecen a lo largo de ella — primero importa las paradas en
+        la pestaña "Paradas" si todavía no existen.
+      </p>
+      <div className="field-row">
+        <div className="field">
+          <label>Archivo KML</label>
+          <input type="file" accept=".kml" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        </div>
+        <div className="field">
+          <label>Radio de emparejado (m)</label>
+          <input type="number" value={radius} onChange={(e) => setRadius(Number(e.target.value))} />
+        </div>
+      </div>
+      {importMutation.isError && <div className="notice ERROR">{(importMutation.error as any)?.message}</div>}
+      <button className="btn block" disabled={!file || importMutation.isPending} onClick={handleImport}>
+        {importMutation.isPending ? 'Importando…' : 'Importar y emparejar paradas'}
+      </button>
+      {result && (
+        <div className="notice INFO" style={{ marginTop: 6 }}>
+          Trazo con {result.shapePointCount} puntos · {result.matchedStopCount} parada
+          {result.matchedStopCount === 1 ? '' : 's'} emparejada{result.matchedStopCount === 1 ? '' : 's'} (radio{' '}
+          {result.matchRadiusMeters}m)
+          {result.matchedStops.length > 0 && (
+            <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+              {result.matchedStops.map((s) => (
+                <li key={s.id}>
+                  {s.name} <span className="hint">({s.distanceMeters}m del trazo)</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PatternEditor({ patternId }: { patternId: string }) {
   const queryClient = useQueryClient();
   const mapTool = useAppStore((s) => s.mapTool);
@@ -1354,6 +1491,8 @@ function PatternEditor({ patternId }: { patternId: string }) {
           </div>
         </div>
       )}
+
+      <KmlPatternImportSection patternId={patternId} />
 
       <div className="panel-section" style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
