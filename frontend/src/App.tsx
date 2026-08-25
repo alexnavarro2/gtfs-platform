@@ -2,7 +2,18 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getAuthToken, setUnauthorizedHandler } from './api/client';
-import type { AdminUser, Agency, Feed, FeedInfoRequest, Route, Stop, ValidationSummary } from './api/client';
+import type {
+  AdminUser,
+  Agency,
+  Feed,
+  FareMedia,
+  FareProduct,
+  FeedInfoRequest,
+  RiderCategory,
+  Route,
+  Stop,
+  ValidationSummary,
+} from './api/client';
 import { useAppStore } from './store/useAppStore';
 import { MapView } from './map/MapView';
 
@@ -1039,6 +1050,7 @@ function RouteEditForm({ route, feedVersionId }: { route: Route; feedVersionId: 
     routeUrl: route.routeUrl || '',
     routeColor: route.routeColor || '1E88E5',
     routeTextColor: route.routeTextColor || 'FFFFFF',
+    networkId: route.networkId || '',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1111,6 +1123,14 @@ function RouteEditForm({ route, feedVersionId }: { route: Route; feedVersionId: 
             />
           </div>
         </div>
+      </div>
+      <div className="field">
+        <label>Red (network_id, opcional)</label>
+        <input
+          value={form.networkId}
+          onChange={(e) => setForm({ ...form, networkId: e.target.value })}
+          placeholder="Déjalo vacío salvo que quieras darle una tarifa propia en la pestaña Tarifas"
+        />
       </div>
       {error && <div className="notice ERROR">{error}</div>}
       {saved && !error && <div className="notice INFO">✓ Guardado</div>}
@@ -1625,43 +1645,437 @@ function CalendarsPanel({ feedVersionId }: { feedVersionId: string }) {
 // Tarifas simples (sección 21)
 // ---------------------------------------------------------------------------
 function FaresPanel({ feedVersionId }: { feedVersionId: string }) {
-  const queryClient = useQueryClient();
-  const productsQuery = useQuery({ queryKey: ['fareProducts', feedVersionId], queryFn: () => api.fares.products.list(feedVersionId) });
-  const [form, setForm] = useState({ fareProductName: 'Tarifa General', amount: 9, currency: 'MXN' });
-
-  const create = useMutation({
-    mutationFn: () => api.fares.products.create(feedVersionId, form),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fareProducts', feedVersionId] }),
-  });
-
   return (
     <div>
       <SectionIntro title="¿Qué es esto?">
-        <code>fare_products.txt</code> (Fares V2, la forma vigente de definir tarifas en GTFS): el costo de un
-        viaje. Esta pantalla solo cubre el caso simple — nombre, monto y moneda, aplicable a todo el feed. Asociar
-        una tarifa a una ruta específica, a una categoría de pasajero o a un medio de pago (tarjeta, efectivo) es
-        parte del estándar pero todavía no tiene interfaz aquí.
+        Fares V2 — la forma vigente de definir tarifas en GTFS (reemplaza a <code>fare_attributes.txt</code>/
+        <code>fare_rules.txt</code>). Se arma en capas: primero <strong>Categorías de pasajero</strong> y{' '}
+        <strong>Medios de pago</strong> (opcionales), después <strong>Tarifas</strong> (el costo en sí, ya puede
+        asociarse a una categoría/medio), y por último <strong>Reglas por tramo</strong> para aplicar una tarifa a
+        toda la red o a una ruta específica, y <strong>Reglas de transbordo</strong> para descuentos al combinar
+        rutas.
       </SectionIntro>
-      <div className="panel-section">
-        <h3>Nueva tarifa</h3>
+      <RiderCategoriesSection feedVersionId={feedVersionId} />
+      <FareMediaSection feedVersionId={feedVersionId} />
+      <FareProductsSection feedVersionId={feedVersionId} />
+      <FareLegRulesSection feedVersionId={feedVersionId} />
+      <FareTransferRulesSection feedVersionId={feedVersionId} />
+    </div>
+  );
+}
+
+function RiderCategoriesSection({ feedVersionId }: { feedVersionId: string }) {
+  const queryClient = useQueryClient();
+  const categoriesQuery = useQuery({
+    queryKey: ['riderCategories', feedVersionId],
+    queryFn: () => api.fares.riderCategories.list(feedVersionId),
+  });
+  const [name, setName] = useState('');
+  const [isDefault, setIsDefault] = useState(false);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['riderCategories', feedVersionId] });
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.fares.riderCategories.create(feedVersionId, { riderCategoryName: name, isDefaultFareCategory: isDefault ? 1 : 0 }),
+    onSuccess: () => {
+      invalidate();
+      setName('');
+      setIsDefault(false);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.fares.riderCategories.remove(feedVersionId, id),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <div className="panel-section">
+      <h3>Categorías de pasajero ({categoriesQuery.data?.length || 0})</h3>
+      <p className="hint">
+        <code>rider_categories.txt</code>: p. ej. "General", "Estudiante", "INAPAM" — cada tarifa puede limitarse a
+        una categoría.
+      </p>
+      <div className="field-row">
         <div className="field">
           <label>Nombre</label>
-          <input value={form.fareProductName} onChange={(e) => setForm({ ...form, fareProductName: e.target.value })} />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Estudiante" />
         </div>
-        <div className="field-row">
-          <div className="field"><label>Monto</label><input type="number" step="0.5" value={form.amount} onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })} /></div>
-          <div className="field"><label>Moneda</label><input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} /></div>
+        <div className="field" style={{ justifyContent: 'flex-end' }}>
+          <label>
+            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> Por
+            defecto
+          </label>
         </div>
-        <button className="btn block" disabled={create.isPending} onClick={() => create.mutate()}>
-          {create.isPending ? 'Creando…' : 'Crear tarifa'}
-        </button>
       </div>
-      <div className="panel-section">
-        <h3>Tarifas ({productsQuery.data?.length || 0})</h3>
-        {(productsQuery.data || []).map((p) => (
-          <div key={p.id} className="list-item"><span>{p.fareProductName} — ${p.amount} {p.currency}</span></div>
-        ))}
+      <button className="btn block" disabled={create.isPending || !name.trim()} onClick={() => create.mutate()}>
+        {create.isPending ? 'Creando…' : 'Crear categoría'}
+      </button>
+      {(categoriesQuery.data || []).map((c) => (
+        <div key={c.id} className="list-item" style={{ marginTop: 6 }}>
+          <span>
+            {c.riderCategoryName} {c.isDefaultFareCategory === 1 && <span className="hint">(por defecto)</span>}
+          </span>
+          <button className="btn danger icon-btn" disabled={remove.isPending} onClick={() => remove.mutate(c.id)}>
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const FARE_MEDIA_TYPES = [
+  { value: 0, label: 'Ninguno (sin medio físico)' },
+  { value: 1, label: 'Papel' },
+  { value: 2, label: 'Tarjeta de transporte' },
+  { value: 3, label: 'cEMV (tarjeta bancaria sin contacto)' },
+  { value: 4, label: 'App móvil' },
+];
+
+function FareMediaSection({ feedVersionId }: { feedVersionId: string }) {
+  const queryClient = useQueryClient();
+  const mediaQuery = useQuery({
+    queryKey: ['fareMedia', feedVersionId],
+    queryFn: () => api.fares.media.list(feedVersionId),
+  });
+  const [name, setName] = useState('');
+  const [type, setType] = useState(2);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['fareMedia', feedVersionId] });
+
+  const create = useMutation({
+    mutationFn: () => api.fares.media.create(feedVersionId, { fareMediaName: name, fareMediaType: type }),
+    onSuccess: () => {
+      invalidate();
+      setName('');
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.fares.media.remove(feedVersionId, id),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <div className="panel-section">
+      <h3>Medios de pago ({mediaQuery.data?.length || 0})</h3>
+      <p className="hint">
+        <code>fare_media.txt</code>: cómo paga el pasajero — tarjeta recargable, efectivo, app, tarjeta bancaria.
+      </p>
+      <div className="field-row">
+        <div className="field">
+          <label>Nombre</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tarjeta IMTES" />
+        </div>
+        <div className="field">
+          <label>Tipo</label>
+          <select value={type} onChange={(e) => setType(Number(e.target.value))}>
+            {FARE_MEDIA_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
+      <button className="btn block" disabled={create.isPending || !name.trim()} onClick={() => create.mutate()}>
+        {create.isPending ? 'Creando…' : 'Crear medio de pago'}
+      </button>
+      {(mediaQuery.data || []).map((m) => (
+        <div key={m.id} className="list-item" style={{ marginTop: 6 }}>
+          <span>
+            {m.fareMediaName || '(sin nombre)'}{' '}
+            <span className="hint">· {FARE_MEDIA_TYPES.find((t) => t.value === m.fareMediaType)?.label}</span>
+          </span>
+          <button className="btn danger icon-btn" disabled={remove.isPending} onClick={() => remove.mutate(m.id)}>
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FareProductsSection({ feedVersionId }: { feedVersionId: string }) {
+  const queryClient = useQueryClient();
+  const productsQuery = useQuery({ queryKey: ['fareProducts', feedVersionId], queryFn: () => api.fares.products.list(feedVersionId) });
+  const categoriesQuery = useQuery({
+    queryKey: ['riderCategories', feedVersionId],
+    queryFn: () => api.fares.riderCategories.list(feedVersionId),
+  });
+  const mediaQuery = useQuery({
+    queryKey: ['fareMedia', feedVersionId],
+    queryFn: () => api.fares.media.list(feedVersionId),
+  });
+  const [form, setForm] = useState({ fareProductName: 'Tarifa General', amount: 9, currency: 'MXN', riderCategoryId: '', fareMediaId: '' });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['fareProducts', feedVersionId] });
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.fares.products.create(feedVersionId, {
+        fareProductName: form.fareProductName,
+        amount: form.amount,
+        currency: form.currency,
+        riderCategory: form.riderCategoryId ? ({ id: form.riderCategoryId } as RiderCategory) : null,
+        fareMedia: form.fareMediaId ? ({ id: form.fareMediaId } as FareMedia) : null,
+      }),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.fares.products.remove(feedVersionId, id),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <div className="panel-section">
+      <h3>Tarifas ({productsQuery.data?.length || 0})</h3>
+      <p className="hint">
+        <code>fare_products.txt</code>: el costo de un viaje, opcionalmente limitado a una categoría de pasajero
+        y/o un medio de pago.
+      </p>
+      <div className="field">
+        <label>Nombre</label>
+        <input value={form.fareProductName} onChange={(e) => setForm({ ...form, fareProductName: e.target.value })} />
+      </div>
+      <div className="field-row">
+        <div className="field"><label>Monto</label><input type="number" step="0.5" value={form.amount} onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })} /></div>
+        <div className="field"><label>Moneda</label><input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} /></div>
+      </div>
+      <div className="field-row">
+        <div className="field">
+          <label>Categoría de pasajero</label>
+          <select value={form.riderCategoryId} onChange={(e) => setForm({ ...form, riderCategoryId: e.target.value })}>
+            <option value="">— Cualquiera —</option>
+            {(categoriesQuery.data || []).map((c) => (
+              <option key={c.id} value={c.id}>{c.riderCategoryName}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Medio de pago</label>
+          <select value={form.fareMediaId} onChange={(e) => setForm({ ...form, fareMediaId: e.target.value })}>
+            <option value="">— Cualquiera —</option>
+            {(mediaQuery.data || []).map((m) => (
+              <option key={m.id} value={m.id}>{m.fareMediaName || m.gtfsId}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <button className="btn block" disabled={create.isPending || !form.fareProductName.trim()} onClick={() => create.mutate()}>
+        {create.isPending ? 'Creando…' : 'Crear tarifa'}
+      </button>
+      {(productsQuery.data || []).map((p) => (
+        <div key={p.id} className="list-item" style={{ marginTop: 6 }}>
+          <span>
+            {p.fareProductName} — ${p.amount} {p.currency}
+            {(p.riderCategory || p.fareMedia) && (
+              <span className="hint">
+                {' '}
+                · {[p.riderCategory?.riderCategoryName, p.fareMedia?.fareMediaName].filter(Boolean).join(' · ')}
+              </span>
+            )}
+          </span>
+          <button className="btn danger icon-btn" disabled={remove.isPending} onClick={() => remove.mutate(p.id)}>
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FareLegRulesSection({ feedVersionId }: { feedVersionId: string }) {
+  const queryClient = useQueryClient();
+  const legRulesQuery = useQuery({
+    queryKey: ['fareLegRules', feedVersionId],
+    queryFn: () => api.fares.legRules.list(feedVersionId),
+  });
+  const productsQuery = useQuery({ queryKey: ['fareProducts', feedVersionId], queryFn: () => api.fares.products.list(feedVersionId) });
+  const routesQuery = useQuery({ queryKey: ['routes', feedVersionId], queryFn: () => api.routes.list(feedVersionId) });
+  const [fareProductId, setFareProductId] = useState('');
+  const [scope, setScope] = useState('__all__');
+
+  const routesWithNetwork = (routesQuery.data || []).filter((r) => r.networkId);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['fareLegRules', feedVersionId] });
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.fares.legRules.create(feedVersionId, {
+        fareProduct: { id: fareProductId } as FareProduct,
+        networkId: scope === '__all__' ? undefined : scope,
+      }),
+    onSuccess: () => {
+      invalidate();
+      setFareProductId('');
+      setScope('__all__');
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.fares.legRules.remove(feedVersionId, id),
+    onSuccess: invalidate,
+  });
+
+  function routeLabelForNetwork(networkId?: string) {
+    if (!networkId) return 'Toda la red';
+    const route = (routesQuery.data || []).find((r) => r.networkId === networkId);
+    return route ? `Ruta ${route.routeShortName}` : networkId;
+  }
+
+  return (
+    <div className="panel-section">
+      <h3>Reglas por tramo ({legRulesQuery.data?.length || 0})</h3>
+      <p className="hint">
+        <code>fare_leg_rules.txt</code>: a qué aplica cada tarifa — toda la red, o una ruta específica (la ruta
+        necesita tener una "Red" asignada en Rutas → Editar ruta).
+      </p>
+      {routesWithNetwork.length === 0 && (
+        <div className="notice WARNING">
+          Ninguna ruta tiene "Red (network_id)" asignada todavía — solo podrás crear reglas para "Toda la red". Ve a
+          Rutas → selecciona una ruta → Editar ruta para asignarle una.
+        </div>
+      )}
+      <div className="field">
+        <label>Tarifa</label>
+        <select value={fareProductId} onChange={(e) => setFareProductId(e.target.value)}>
+          <option value="">— Selecciona —</option>
+          {(productsQuery.data || []).map((p) => (
+            <option key={p.id} value={p.id}>{p.fareProductName}</option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label>Aplica a</label>
+        <select value={scope} onChange={(e) => setScope(e.target.value)}>
+          <option value="__all__">Toda la red</option>
+          {routesWithNetwork.map((r) => (
+            <option key={r.id} value={r.networkId}>Ruta {r.routeShortName}</option>
+          ))}
+        </select>
+      </div>
+      <button className="btn block" disabled={create.isPending || !fareProductId} onClick={() => create.mutate()}>
+        {create.isPending ? 'Creando…' : 'Crear regla'}
+      </button>
+      {(legRulesQuery.data || []).map((r) => (
+        <div key={r.id} className="list-item" style={{ marginTop: 6 }}>
+          <span>
+            {r.fareProduct.fareProductName} <span className="hint">· {routeLabelForNetwork(r.networkId)}</span>
+          </span>
+          <button className="btn danger icon-btn" disabled={remove.isPending} onClick={() => remove.mutate(r.id)}>
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const FARE_TRANSFER_TYPES = [
+  { value: 0, label: 'Se cobra el tramo + esta regla' },
+  { value: 1, label: 'Se cobra el tramo + la diferencia con esta regla' },
+  { value: 2, label: 'Solo se cobra esta regla (ignora el tramo)' },
+];
+
+function FareTransferRulesSection({ feedVersionId }: { feedVersionId: string }) {
+  const queryClient = useQueryClient();
+  const transferRulesQuery = useQuery({
+    queryKey: ['fareTransferRules', feedVersionId],
+    queryFn: () => api.fares.transferRules.list(feedVersionId),
+  });
+  const legRulesQuery = useQuery({
+    queryKey: ['fareLegRules', feedVersionId],
+    queryFn: () => api.fares.legRules.list(feedVersionId),
+  });
+  const productsQuery = useQuery({ queryKey: ['fareProducts', feedVersionId], queryFn: () => api.fares.products.list(feedVersionId) });
+  const [fromLegGroupId, setFromLegGroupId] = useState('');
+  const [toLegGroupId, setToLegGroupId] = useState('');
+  const [fareTransferType, setFareTransferType] = useState(0);
+  const [fareProductId, setFareProductId] = useState('');
+
+  const legGroupIds = Array.from(
+    new Set((legRulesQuery.data || []).map((r) => r.gtfsLegGroupId).filter((v): v is string => !!v)),
+  );
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['fareTransferRules', feedVersionId] });
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.fares.transferRules.create(feedVersionId, {
+        fromLegGroupId: fromLegGroupId || undefined,
+        toLegGroupId: toLegGroupId || undefined,
+        fareTransferType,
+        fareProduct: fareProductId ? ({ id: fareProductId } as FareProduct) : null,
+      }),
+    onSuccess: () => {
+      invalidate();
+      setFareProductId('');
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.fares.transferRules.remove(feedVersionId, id),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <div className="panel-section">
+      <h3>Reglas de transbordo ({transferRulesQuery.data?.length || 0})</h3>
+      <p className="hint">
+        <code>fare_transfer_rules.txt</code>: descuento (o tarifa especial) al combinar dos tramos — requiere que
+        las reglas por tramo tengan un "Grupo" (<code>leg_group_id</code>) asignado; esta pantalla no lo expone
+        todavía, así que solo aplica si ya lo cargaste por import.
+      </p>
+      <div className="field-row">
+        <div className="field">
+          <label>Grupo origen</label>
+          <select value={fromLegGroupId} onChange={(e) => setFromLegGroupId(e.target.value)}>
+            <option value="">—</option>
+            {legGroupIds.map((id) => (
+              <option key={id} value={id}>{id}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>Grupo destino</label>
+          <select value={toLegGroupId} onChange={(e) => setToLegGroupId(e.target.value)}>
+            <option value="">—</option>
+            {legGroupIds.map((id) => (
+              <option key={id} value={id}>{id}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="field">
+        <label>Tipo</label>
+        <select value={fareTransferType} onChange={(e) => setFareTransferType(Number(e.target.value))}>
+          {FARE_TRANSFER_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label>Tarifa del transbordo (opcional)</label>
+        <select value={fareProductId} onChange={(e) => setFareProductId(e.target.value)}>
+          <option value="">— Sin costo adicional —</option>
+          {(productsQuery.data || []).map((p) => (
+            <option key={p.id} value={p.id}>{p.fareProductName}</option>
+          ))}
+        </select>
+      </div>
+      <button className="btn block" disabled={create.isPending} onClick={() => create.mutate()}>
+        {create.isPending ? 'Creando…' : 'Crear regla de transbordo'}
+      </button>
+      {(transferRulesQuery.data || []).map((r) => (
+        <div key={r.id} className="list-item" style={{ marginTop: 6 }}>
+          <span>
+            {r.fromLegGroupId || '(cualquiera)'} → {r.toLegGroupId || '(cualquiera)'}
+            <span className="hint"> · {r.fareProduct ? r.fareProduct.fareProductName : 'sin costo adicional'}</span>
+          </span>
+          <button className="btn danger icon-btn" disabled={remove.isPending} onClick={() => remove.mutate(r.id)}>
+            ✕
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

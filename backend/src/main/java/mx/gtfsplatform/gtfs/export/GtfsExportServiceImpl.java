@@ -174,7 +174,7 @@ public class GtfsExportServiceImpl {
     private void writeRoutes(Path dir, List<Route> routes) {
         CsvTable.write(dir, "routes.txt", List.of("route_id", "agency_id", "route_short_name",
                 "route_long_name", "route_desc", "route_type", "route_url", "route_color", "route_text_color",
-                "route_sort_order", "continuous_pickup", "continuous_drop_off"),
+                "route_sort_order", "continuous_pickup", "continuous_drop_off", "network_id"),
                 printer -> {
                     for (Route r : routes) {
                         printer.printRecord(r.getGtfsId(), r.getAgency().getGtfsId(), nullToEmpty(r.getRouteShortName()),
@@ -182,7 +182,8 @@ public class GtfsExportServiceImpl {
                                 nullToEmpty(r.getRouteUrl()), nullToEmpty(r.getRouteColor()), nullToEmpty(r.getRouteTextColor()),
                                 r.getRouteSortOrder() == null ? "" : r.getRouteSortOrder(),
                                 r.getContinuousPickup() == null ? "" : r.getContinuousPickup(),
-                                r.getContinuousDropOff() == null ? "" : r.getContinuousDropOff());
+                                r.getContinuousDropOff() == null ? "" : r.getContinuousDropOff(),
+                                nullToEmpty(r.getNetworkId()));
                     }
                 });
     }

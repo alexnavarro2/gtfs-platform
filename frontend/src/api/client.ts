@@ -128,6 +128,7 @@ export interface Route {
   routeColor?: string;
   routeTextColor?: string;
   routeSortOrder?: number;
+  networkId?: string;
 }
 
 export interface RoutePattern {
@@ -186,8 +187,8 @@ export interface FareProduct {
   fareProductName: string;
   amount: number;
   currency: string;
-  riderCategory?: { id: string };
-  fareMedia?: { id: string };
+  riderCategory?: RiderCategory | null;
+  fareMedia?: FareMedia | null;
 }
 
 export interface RiderCategory {
@@ -195,6 +196,31 @@ export interface RiderCategory {
   gtfsId?: string;
   riderCategoryName: string;
   isDefaultFareCategory?: number;
+}
+
+export interface FareMedia {
+  id: string;
+  gtfsId?: string;
+  fareMediaName?: string;
+  fareMediaType: number;
+}
+
+export interface FareLegRule {
+  id: string;
+  gtfsLegGroupId?: string;
+  networkId?: string;
+  fareProduct: FareProduct;
+}
+
+export interface FareTransferRule {
+  id: string;
+  fromLegGroupId?: string;
+  toLegGroupId?: string;
+  transferCount?: number;
+  durationLimitSecs?: number;
+  durationLimitType?: number;
+  fareTransferType: number;
+  fareProduct?: FareProduct | null;
 }
 
 export interface TripFrequencyWindow {
@@ -331,11 +357,36 @@ export const api = {
       list: (fvId: string) => get<RiderCategory[]>(`/feed-versions/${fvId}/rider-categories`),
       create: (fvId: string, body: Partial<RiderCategory>) =>
         post<RiderCategory>(`/feed-versions/${fvId}/rider-categories`, body),
+      update: (fvId: string, id: string, body: Partial<RiderCategory>) =>
+        put<RiderCategory>(`/feed-versions/${fvId}/rider-categories/${id}`, body),
+      remove: (fvId: string, id: string) => del<void>(`/feed-versions/${fvId}/rider-categories/${id}`),
+    },
+    media: {
+      list: (fvId: string) => get<FareMedia[]>(`/feed-versions/${fvId}/fare-media`),
+      create: (fvId: string, body: Partial<FareMedia>) => post<FareMedia>(`/feed-versions/${fvId}/fare-media`, body),
+      update: (fvId: string, id: string, body: Partial<FareMedia>) =>
+        put<FareMedia>(`/feed-versions/${fvId}/fare-media/${id}`, body),
+      remove: (fvId: string, id: string) => del<void>(`/feed-versions/${fvId}/fare-media/${id}`),
     },
     products: {
       list: (fvId: string) => get<FareProduct[]>(`/feed-versions/${fvId}/fare-products`),
       create: (fvId: string, body: Partial<FareProduct>) =>
         post<FareProduct>(`/feed-versions/${fvId}/fare-products`, body),
+      update: (fvId: string, id: string, body: Partial<FareProduct>) =>
+        put<FareProduct>(`/feed-versions/${fvId}/fare-products/${id}`, body),
+      remove: (fvId: string, id: string) => del<void>(`/feed-versions/${fvId}/fare-products/${id}`),
+    },
+    legRules: {
+      list: (fvId: string) => get<FareLegRule[]>(`/feed-versions/${fvId}/fare-leg-rules`),
+      create: (fvId: string, body: Partial<FareLegRule>) =>
+        post<FareLegRule>(`/feed-versions/${fvId}/fare-leg-rules`, body),
+      remove: (fvId: string, id: string) => del<void>(`/feed-versions/${fvId}/fare-leg-rules/${id}`),
+    },
+    transferRules: {
+      list: (fvId: string) => get<FareTransferRule[]>(`/feed-versions/${fvId}/fare-transfer-rules`),
+      create: (fvId: string, body: Partial<FareTransferRule>) =>
+        post<FareTransferRule>(`/feed-versions/${fvId}/fare-transfer-rules`, body),
+      remove: (fvId: string, id: string) => del<void>(`/feed-versions/${fvId}/fare-transfer-rules/${id}`),
     },
   },
   gtfs: {

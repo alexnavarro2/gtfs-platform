@@ -71,6 +71,12 @@ public class Route {
     @Column(name = "continuous_drop_off")
     private Short continuousDropOff;
 
+    // Solo se usa para referenciar la ruta desde fare_leg_rules.txt (Fares V2) —
+    // ver V6__route_network_id.sql. No confundir con "route.network_id" del
+    // esquema legado: es literalmente el mismo campo, opcional, para esa función.
+    @Column(name = "network_id")
+    private String networkId;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 

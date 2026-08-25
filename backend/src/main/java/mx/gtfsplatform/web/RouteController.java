@@ -75,6 +75,7 @@ public class RouteController {
         existing.setRouteSortOrder(update.getRouteSortOrder());
         existing.setContinuousPickup(update.getContinuousPickup());
         existing.setContinuousDropOff(update.getContinuousDropOff());
+        existing.setNetworkId(update.getNetworkId());
         existing.setUpdatedAt(OffsetDateTime.now());
         return routeRepository.save(existing);
     }

@@ -76,9 +76,18 @@ public class FareController {
             @RequestBody RiderCategory update) {
         RiderCategory existing = riderCategoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("RiderCategory not found: " + id));
-        existing.setGtfsId(update.getGtfsId());
-        existing.setRiderCategoryName(update.getRiderCategoryName());
-        existing.setIsDefaultFareCategory(update.getIsDefaultFareCategory());
+        // gtfs_id/rider_category_name/is_default_fare_category son NOT NULL — mismo
+        // patrón null-safe que AgencyController/RouteController, para que un
+        // formulario que edite un solo campo no tumbe los demás a NULL.
+        if (update.getGtfsId() != null && !update.getGtfsId().isBlank()) {
+            existing.setGtfsId(update.getGtfsId());
+        }
+        if (update.getRiderCategoryName() != null) {
+            existing.setRiderCategoryName(update.getRiderCategoryName());
+        }
+        if (update.getIsDefaultFareCategory() != null) {
+            existing.setIsDefaultFareCategory(update.getIsDefaultFareCategory());
+        }
         return riderCategoryRepository.save(existing);
     }
 
@@ -109,9 +118,13 @@ public class FareController {
             @RequestBody FareMedia update) {
         FareMedia existing = fareMediaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("FareMedia not found: " + id));
-        existing.setGtfsId(update.getGtfsId());
+        if (update.getGtfsId() != null && !update.getGtfsId().isBlank()) {
+            existing.setGtfsId(update.getGtfsId());
+        }
         existing.setFareMediaName(update.getFareMediaName());
-        existing.setFareMediaType(update.getFareMediaType());
+        if (update.getFareMediaType() != null) {
+            existing.setFareMediaType(update.getFareMediaType());
+        }
         return fareMediaRepository.save(existing);
     }
 
@@ -142,12 +155,23 @@ public class FareController {
             @RequestBody FareProduct update) {
         FareProduct existing = fareProductRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("FareProduct not found: " + id));
-        existing.setGtfsId(update.getGtfsId());
-        existing.setFareProductName(update.getFareProductName());
+        if (update.getGtfsId() != null && !update.getGtfsId().isBlank()) {
+            existing.setGtfsId(update.getGtfsId());
+        }
+        if (update.getFareProductName() != null) {
+            existing.setFareProductName(update.getFareProductName());
+        }
+        // rider_category/fare_media sí son opcionales de verdad (se puede querer
+        // "sin categoría" o "sin medio"), así que se aceptan tal cual venga,
+        // incluido null para desasociar.
         existing.setRiderCategory(update.getRiderCategory());
         existing.setFareMedia(update.getFareMedia());
-        existing.setAmount(update.getAmount());
-        existing.setCurrency(update.getCurrency());
+        if (update.getAmount() != null) {
+            existing.setAmount(update.getAmount());
+        }
+        if (update.getCurrency() != null) {
+            existing.setCurrency(update.getCurrency());
+        }
         return fareProductRepository.save(existing);
     }
 
@@ -177,7 +201,10 @@ public class FareController {
                 .orElseThrow(() -> new ResourceNotFoundException("FareLegRule not found: " + id));
         existing.setGtfsLegGroupId(update.getGtfsLegGroupId());
         existing.setNetworkId(update.getNetworkId());
-        existing.setFareProduct(update.getFareProduct());
+        // fare_product_id es NOT NULL.
+        if (update.getFareProduct() != null) {
+            existing.setFareProduct(update.getFareProduct());
+        }
         return fareLegRuleRepository.save(existing);
     }
 
@@ -211,7 +238,10 @@ public class FareController {
         existing.setTransferCount(update.getTransferCount());
         existing.setDurationLimitSecs(update.getDurationLimitSecs());
         existing.setDurationLimitType(update.getDurationLimitType());
-        existing.setFareTransferType(update.getFareTransferType());
+        // fare_transfer_type es NOT NULL (default 0).
+        if (update.getFareTransferType() != null) {
+            existing.setFareTransferType(update.getFareTransferType());
+        }
         existing.setFareProduct(update.getFareProduct());
         return fareTransferRuleRepository.save(existing);
     }
