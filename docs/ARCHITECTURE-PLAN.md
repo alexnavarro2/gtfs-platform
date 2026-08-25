@@ -72,20 +72,22 @@ Resultado: todo feed creado desde el portal (no importado) exportaba sin `feed_i
 
 **Resuelto:** se agregó `PUT /api/v1/feed-versions/{id}/feed-info` (DTO dedicado a estos 9 campos, no la entidad completa, para no repetir el bug de sobreescritura ciega que ya se había corregido en `AgencyController`) y un formulario "Datos del feed" al inicio de la pestaña Agencia. Verificado exportando un feed real: `feed_info.txt` se genera con los 9 campos y fechas en formato GTFS (`YYYYMMDD`).
 
-### B.3 Gap real #2 — Fares V2 y `transfers.txt`: backend completo, UI casi vacía
+### B.3 [RESUELTO en su mayoría] Fares V2 y `transfers.txt`: backend completo, UI casi vacía
 
-El backend tiene CRUD completo (`FareController`, `TransferRuleController`) para las 5 tablas de Fares V2 y para `transfer_rule`, pero el frontend solo conecta una fracción:
+El backend tiene CRUD completo (`FareController`, `TransferRuleController`) para las 5 tablas de Fares V2 y para `transfer_rule`, pero el frontend solo conectaba una fracción:
 
 | Archivo | Backend (`FareController`/`TransferRuleController`) | Cliente API (`client.ts`) | UI (`App.tsx`) |
 |---|---|---|---|
-| `fare_products.txt` | ✅ CRUD completo | ✅ solo `list`/`create` | ✅ formulario "Nueva tarifa" |
-| `rider_categories.txt` | ✅ CRUD completo | ✅ `list`/`create` definidos | ❌ nunca se llaman — código muerto |
-| `fare_media.txt` | ✅ CRUD completo | ❌ no existe | ❌ |
-| `fare_leg_rules.txt` | ✅ CRUD completo | ❌ no existe | ❌ |
-| `fare_transfer_rules.txt` | ✅ CRUD completo | ❌ no existe | ❌ |
+| `fare_products.txt` | ✅ CRUD completo | ✅ CRUD completo | ✅ crear/asociar categoría+medio/borrar |
+| `rider_categories.txt` | ✅ CRUD completo | ✅ CRUD completo | ✅ crear/listar/borrar |
+| `fare_media.txt` | ✅ CRUD completo | ✅ CRUD completo | ✅ crear/listar/borrar |
+| `fare_leg_rules.txt` | ✅ CRUD completo | ✅ list/create/remove | ✅ tarifa → toda la red o una ruta específica |
+| `fare_transfer_rules.txt` | ✅ CRUD completo | ✅ list/create/remove | ✅ tipo + tarifa opcional + grupos origen/destino |
 | `transfers.txt` | ✅ CRUD completo | ❌ no existe | ❌ — y tampoco se importa desde un zip subido |
 
-Como los 6 archivos son Opcionales según el spec, esto **no** bloquea el criterio de "GTFS válido" — pero sí significa que hoy solo se puede crear una tarifa plana por trayecto (nombre + monto + moneda); no hay forma de asociar un medio de pago, una categoría de tarifa (estudiante, INAPAM), una regla de transbordo con descuento, ni transbordos físicos entre paradas, sin editar la base de datos directamente.
+Resuelto (2026-08-25): se conectó la UI completa de Fares V2 — categorías de pasajero, medios de pago, y tarifas ahora asociables a ambos, más reglas por tramo (toda la red o una ruta específica) y reglas de transbordo. Para "asociar a una ruta específica" se agregó `route.network_id` (columna en `routes.txt`, sin necesitar `networks.txt`/`route_networks.txt` aparte) — se asigna en Rutas → Editar ruta, y el picker de reglas por tramo solo ofrece rutas que ya lo tengan. Verificado exportando un GTFS real con las 5 tablas correctamente cruzadas entre sí.
+
+Sigue pendiente únicamente `transfers.txt` (transbordos físicos entre paradas — un concepto distinto de las reglas de transbordo de tarifa): tiene CRUD completo en el backend pero cero UI y no se importa desde un zip subido. Es Opcional según el spec, no bloquea "GTFS válido".
 
 ### B.4 Sin implementar (Opcional en el spec, out of scope actual)
 
@@ -105,7 +107,7 @@ Ninguno de estos es Requerido ni Condicionalmente Requerido para un feed de bus 
 ### B.5 Prioridad recomendada
 
 1. ~~`feed_info.txt`~~ (B.2) — **resuelto**, era el único hueco que tocaba la barra de "requerido por el spec".
-2. **Conectar la UI de Fares V2 ya construida en el backend** (B.3) — no es requerido por el spec, pero es funcionalidad ya pagada (CRUD completo) que hoy es inalcanzable desde el producto.
+2. ~~Conectar la UI de Fares V2~~ (B.3) — **resuelto** salvo `transfers.txt` (transbordos físicos entre paradas, concepto separado de las reglas de transbordo de tarifa), que sigue sin UI ni import.
 3. Todo lo demás (B.4) — evaluar solo si el alcance crece más allá de bus urbano de ruta fija (p. ej. si se integra con metro/BRT con estaciones, o se necesita multi-idioma).
 
 ---
