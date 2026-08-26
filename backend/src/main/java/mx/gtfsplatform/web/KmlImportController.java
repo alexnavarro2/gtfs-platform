@@ -22,10 +22,11 @@ public class KmlImportController {
 
     public record StopImportJobStatus(
             String jobId, String status, int totalPoints, int processedCount, int geocodedCount,
-            String errorMessage) {
+            String errorMessage, Double minLat, Double maxLat, Double minLon, Double maxLon) {
         static StopImportJobStatus of(KmlStopImportJob job) {
             return new StopImportJobStatus(job.getId().toString(), job.getStatus(), job.getTotalPoints(),
-                    job.getProcessedCount(), job.getGeocodedCount(), job.getErrorMessage());
+                    job.getProcessedCount(), job.getGeocodedCount(), job.getErrorMessage(),
+                    job.getMinLat(), job.getMaxLat(), job.getMinLon(), job.getMaxLon());
         }
     }
 

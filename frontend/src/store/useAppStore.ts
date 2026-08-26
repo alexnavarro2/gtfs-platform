@@ -22,6 +22,11 @@ interface AppState {
   // de ruteo). Nunca se guarda solo: el usuario confirma con "Guardar recorrido".
   routedPreviewPoints: { lat: number; lon: number }[];
   routedPreviewInfo: { routed: boolean; provider: string } | null;
+  // Caja delimitadora a la que el mapa debe encuadrarse (ej. al terminar un
+  // import de KML) — cada llamada a setBoundsToFit crea un objeto nuevo, así
+  // que MapView puede detectar el cambio por referencia sin necesitar que
+  // alguien la limpie después.
+  boundsToFit: { minLat: number; maxLat: number; minLon: number; maxLon: number } | null;
   setFeed: (feedId: string, feedVersionId: string) => void;
   setAgency: (agencyId: string) => void;
   setActiveRoute: (routeId: string | null) => void;
@@ -33,6 +38,7 @@ interface AppState {
   toggleDraftPatternStop: (stopId: string) => void;
   clearDraftPatternStops: () => void;
   setRoutedPreview: (points: { lat: number; lon: number }[], info: { routed: boolean; provider: string } | null) => void;
+  setBoundsToFit: (bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number }) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -66,6 +72,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       draftPatternStopIds: [],
       routedPreviewPoints: [],
       routedPreviewInfo: null,
+      boundsToFit: null,
     });
   },
   feedId: null,
@@ -79,6 +86,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   draftPatternStopIds: [],
   routedPreviewPoints: [],
   routedPreviewInfo: null,
+  boundsToFit: null,
   setFeed: (feedId, feedVersionId) =>
     set({
       feedId,
@@ -120,4 +128,5 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   clearDraftPatternStops: () => set({ draftPatternStopIds: [], routedPreviewPoints: [], routedPreviewInfo: null }),
   setRoutedPreview: (points, info) => set({ routedPreviewPoints: points, routedPreviewInfo: info }),
+  setBoundsToFit: (bounds) => set({ boundsToFit: bounds }),
 }));

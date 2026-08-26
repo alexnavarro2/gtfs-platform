@@ -53,6 +53,18 @@ public class KmlStopImportJob {
     @Column(name = "error_message")
     private String errorMessage;
 
+    @Column(name = "min_lat")
+    private Double minLat;
+
+    @Column(name = "max_lat")
+    private Double maxLat;
+
+    @Column(name = "min_lon")
+    private Double minLon;
+
+    @Column(name = "max_lon")
+    private Double maxLon;
+
     @Column(name = "started_at", nullable = false)
     private OffsetDateTime startedAt;
 

@@ -54,6 +54,10 @@ public class KmlStopImportWorker {
         try {
             int processed = 0;
             int geocoded = 0;
+            double minLat = Double.NaN;
+            double maxLat = Double.NaN;
+            double minLon = Double.NaN;
+            double maxLon = Double.NaN;
             for (KmlParser.KmlPoint p : points) {
                 Optional<String> suggestion;
                 try {
@@ -89,9 +93,18 @@ public class KmlStopImportWorker {
                 // anterior (Hibernate lo difiere) y repite el mismo gtfs_id.
                 stopRepository.saveAndFlush(stop);
 
+                minLat = Double.isNaN(minLat) ? p.lat() : Math.min(minLat, p.lat());
+                maxLat = Double.isNaN(maxLat) ? p.lat() : Math.max(maxLat, p.lat());
+                minLon = Double.isNaN(minLon) ? p.lon() : Math.min(minLon, p.lon());
+                maxLon = Double.isNaN(maxLon) ? p.lon() : Math.max(maxLon, p.lon());
+
                 processed++;
                 job.setProcessedCount(processed);
                 job.setGeocodedCount(geocoded);
+                job.setMinLat(minLat);
+                job.setMaxLat(maxLat);
+                job.setMinLon(minLon);
+                job.setMaxLon(maxLon);
                 jobRepository.save(job);
             }
             job.setStatus(KmlStopImportJob.Status.DONE.name());

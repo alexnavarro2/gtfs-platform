@@ -152,6 +152,10 @@ export interface StopImportJobStatus {
   processedCount: number;
   geocodedCount: number;
   errorMessage: string | null;
+  minLat: number | null;
+  maxLat: number | null;
+  minLon: number | null;
+  maxLon: number | null;
 }
 
 export interface KmlMatchedStopSummary {

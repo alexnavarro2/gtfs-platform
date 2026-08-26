@@ -14,6 +14,7 @@ interface MapViewProps {
   onMapClick: (lat: number, lon: number) => void;
   onStopClick: (stopId: string) => void;
   focusPoint?: { lat: number; lon: number } | null;
+  focusBounds?: { minLat: number; maxLat: number; minLon: number; maxLon: number } | null;
 }
 
 const HERMOSILLO_CENTER: [number, number] = [-110.9559, 29.0729];
@@ -28,6 +29,7 @@ export function MapView({
   onMapClick,
   onStopClick,
   focusPoint,
+  focusBounds,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -260,6 +262,24 @@ export function MapView({
     if (!map || !focusPoint) return;
     map.flyTo({ center: [focusPoint.lon, focusPoint.lat], zoom: 16 });
   }, [focusPoint]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focusBounds) return;
+    const { minLat, maxLat, minLon, maxLon } = focusBounds;
+    if (minLat === maxLat && minLon === maxLon) {
+      // Un solo punto (o todos encimados) no forma una caja válida para fitBounds.
+      map.flyTo({ center: [minLon, minLat], zoom: 16 });
+      return;
+    }
+    map.fitBounds(
+      [
+        [minLon, minLat],
+        [maxLon, maxLat],
+      ],
+      { padding: 60, maxZoom: 17, duration: 1000 },
+    );
+  }, [focusBounds]);
 
   return <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />;
 }

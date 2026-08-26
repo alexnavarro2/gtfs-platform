@@ -703,6 +703,7 @@ function MapArea({
   const routedPreviewPoints = useAppStore((s) => s.routedPreviewPoints);
   const routedPreviewInfo = useAppStore((s) => s.routedPreviewInfo);
   const setRoutedPreview = useAppStore((s) => s.setRoutedPreview);
+  const boundsToFit = useAppStore((s) => s.boundsToFit);
   const [pendingStopLatLon, setPendingStopLatLon] = useState<{ lat: number; lon: number } | null>(null);
   const [routing, setRouting] = useState(false);
 
@@ -788,6 +789,7 @@ function MapArea({
         routedPreviewPoints={routedPreviewPoints}
         onMapClick={handleMapClick}
         onStopClick={handleStopClick}
+        focusBounds={boundsToFit}
       />
       <div className="attribution-badge">{attribution || '© OpenStreetMap contributors'}</div>
       {((mapTool === 'add-pattern-stop' && draftPatternStopIds.length >= 2) ||
@@ -915,6 +917,7 @@ function StopQuickForm({
 // indistinguible de haberlas creado ahí una por una.
 function KmlStopsImportSection({ feedVersionId }: { feedVersionId: string }) {
   const queryClient = useQueryClient();
+  const setBoundsToFit = useAppStore((s) => s.setBoundsToFit);
   const [file, setFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [doneResult, setDoneResult] = useState<StopImportJobStatus | null>(null);
@@ -944,8 +947,11 @@ function KmlStopsImportSection({ feedVersionId }: { feedVersionId: string }) {
       setDoneResult(job);
       setJobId(null);
       queryClient.invalidateQueries({ queryKey: ['stops', feedVersionId] });
+      if (job.status === 'DONE' && job.minLat != null && job.maxLat != null && job.minLon != null && job.maxLon != null) {
+        setBoundsToFit({ minLat: job.minLat, maxLat: job.maxLat, minLon: job.minLon, maxLon: job.maxLon });
+      }
     }
-  }, [jobQuery.data, jobId, feedVersionId, queryClient]);
+  }, [jobQuery.data, jobId, feedVersionId, queryClient, setBoundsToFit]);
 
   const runningJob = jobId ? jobQuery.data : null;
   const isRunning = !!runningJob && runningJob.status === 'RUNNING';
