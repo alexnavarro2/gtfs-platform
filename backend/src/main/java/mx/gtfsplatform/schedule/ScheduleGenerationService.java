@@ -176,7 +176,11 @@ public class ScheduleGenerationService {
                     .bikesAllowed((short) 0)
                     .frequencyBased(false)
                     .build();
-            trip = tripRepository.save(trip);
+            // saveAndFlush, no save: idGenerator.next() cuenta filas con JDBC crudo
+            // fuera de la sesión de Hibernate — sin flush no ve el INSERT del trip
+            // anterior en esta misma vuelta y le repite el mismo gtfs_id (mismo bug
+            // que en KmlStopImportWorker/KmlImportService).
+            trip = tripRepository.saveAndFlush(trip);
 
             saveStopTimes(trip, orderedStops, offsets, baseSec);
             created.add(trip);
@@ -216,7 +220,7 @@ public class ScheduleGenerationService {
                 .bikesAllowed((short) 0)
                 .frequencyBased(true)
                 .build();
-        trip = tripRepository.save(trip);
+        trip = tripRepository.saveAndFlush(trip);
 
         int baseSec = GtfsTime.parseToSeconds(req.windows().get(0).startTime());
         saveStopTimes(trip, orderedStops, offsets, baseSec);
