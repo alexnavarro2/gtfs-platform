@@ -11,7 +11,7 @@ import type {
   FeedInfoRequest,
   KmlBulkRoutesImportResult,
   KmlPatternImportResult,
-  KmlStopsImportResult,
+  StopImportJobStatus,
   RiderCategory,
   Route,
   Stop,
@@ -916,16 +916,39 @@ function StopQuickForm({
 function KmlStopsImportSection({ feedVersionId }: { feedVersionId: string }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<KmlStopsImportResult | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [doneResult, setDoneResult] = useState<StopImportJobStatus | null>(null);
 
-  const importMutation = useMutation({
+  const startMutation = useMutation({
     mutationFn: (f: File) => api.stops.importKml(feedVersionId, f),
-    onSuccess: (res) => {
-      setResult(res);
+    onSuccess: (job) => {
+      setJobId(job.jobId);
+      setDoneResult(null);
       setFile(null);
-      queryClient.invalidateQueries({ queryKey: ['stops', feedVersionId] });
     },
   });
+
+  // Import corre en segundo plano (puede tardar varios minutos con archivos grandes,
+  // por el geocoding punto por punto) — se consulta el progreso en vez de esperar una
+  // sola respuesta HTTP larga, que puede cortarse en silencio antes de llegar.
+  const jobQuery = useQuery({
+    queryKey: ['kml-stop-import-job', jobId],
+    queryFn: () => api.stops.getKmlImportJob(jobId as string),
+    enabled: !!jobId,
+    refetchInterval: (query) => (query.state.data?.status === 'RUNNING' ? 1000 : false),
+  });
+
+  useEffect(() => {
+    const job = jobQuery.data;
+    if (job && job.status !== 'RUNNING' && jobId) {
+      setDoneResult(job);
+      setJobId(null);
+      queryClient.invalidateQueries({ queryKey: ['stops', feedVersionId] });
+    }
+  }, [jobQuery.data, jobId, feedVersionId, queryClient]);
+
+  const runningJob = jobId ? jobQuery.data : null;
+  const isRunning = !!runningJob && runningJob.status === 'RUNNING';
 
   return (
     <div className="panel-section">
@@ -933,31 +956,44 @@ function KmlStopsImportSection({ feedVersionId }: { feedVersionId: string }) {
       <p className="hint">
         Cada punto del KML se crea como parada, nombrada por la intersección más cercana — igual que si la hubieras
         creado a mano en el mapa. Si no se encuentra una intersección cercana, se usa el nombre del punto en el KML
-        (o "Parada importada").
+        (o "Parada importada"). Con archivos grandes puede tardar varios minutos; el progreso se actualiza aquí
+        mismo, no hace falta esperar sin recargar la página.
       </p>
       <input
         type="file"
         accept=".kml"
         onChange={(e) => setFile(e.target.files?.[0] || null)}
       />
-      {importMutation.isError && (
-        <div className="notice ERROR">{(importMutation.error as any)?.message}</div>
+      {startMutation.isError && (
+        <div className="notice ERROR">{(startMutation.error as any)?.message}</div>
       )}
       <button
         className="btn block"
         style={{ marginTop: 6 }}
-        disabled={!file || importMutation.isPending}
-        onClick={() => file && importMutation.mutate(file)}
+        disabled={!file || startMutation.isPending || isRunning}
+        onClick={() => file && startMutation.mutate(file)}
       >
-        {importMutation.isPending ? 'Importando…' : 'Importar KML'}
+        {startMutation.isPending ? 'Iniciando…' : isRunning ? 'Importando…' : 'Importar KML'}
       </button>
-      {result && (
+      {isRunning && runningJob && (
         <div className="notice INFO" style={{ marginTop: 6 }}>
-          {result.totalPoints} punto{result.totalPoints === 1 ? '' : 's'} importado{result.totalPoints === 1 ? '' : 's'}
-          {' '}· {result.geocodedCount} con nombre por intersección
-          {result.geocodedCount < result.totalPoints && (
-            <> · {result.totalPoints - result.geocodedCount} sin match, revisa sus nombres</>
+          Procesando {runningJob.processedCount} de {runningJob.totalPoints} puntos
+          {' '}· {runningJob.geocodedCount} con nombre por intersección hasta ahora…
+        </div>
+      )}
+      {doneResult && doneResult.status === 'DONE' && (
+        <div className="notice INFO" style={{ marginTop: 6 }}>
+          {doneResult.totalPoints} punto{doneResult.totalPoints === 1 ? '' : 's'} importado
+          {doneResult.totalPoints === 1 ? '' : 's'}
+          {' '}· {doneResult.geocodedCount} con nombre por intersección
+          {doneResult.geocodedCount < doneResult.totalPoints && (
+            <> · {doneResult.totalPoints - doneResult.geocodedCount} sin match, revisa sus nombres</>
           )}
+        </div>
+      )}
+      {doneResult && doneResult.status === 'FAILED' && (
+        <div className="notice ERROR" style={{ marginTop: 6 }}>
+          Falló la importación: {doneResult.errorMessage || 'error desconocido'}
         </div>
       )}
     </div>

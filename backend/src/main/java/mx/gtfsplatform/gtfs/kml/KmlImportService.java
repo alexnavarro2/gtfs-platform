@@ -6,48 +6,48 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.Optional;
 import java.util.UUID;
 import mx.gtfsplatform.domain.Agency;
 import mx.gtfsplatform.domain.FeedVersion;
+import mx.gtfsplatform.domain.KmlStopImportJob;
 import mx.gtfsplatform.domain.PatternStop;
 import mx.gtfsplatform.domain.Route;
 import mx.gtfsplatform.domain.RoutePattern;
 import mx.gtfsplatform.domain.ShapePoint;
 import mx.gtfsplatform.domain.Stop;
 import mx.gtfsplatform.geo.GeoUtils;
-import mx.gtfsplatform.geocoding.GeocodingProvider;
 import mx.gtfsplatform.gtfs.GtfsIdGenerator;
 import mx.gtfsplatform.repository.AgencyRepository;
 import mx.gtfsplatform.repository.FeedVersionRepository;
+import mx.gtfsplatform.repository.KmlStopImportJobRepository;
 import mx.gtfsplatform.repository.PatternStopRepository;
 import mx.gtfsplatform.repository.RoutePatternRepository;
 import mx.gtfsplatform.repository.RouteRepository;
 import mx.gtfsplatform.repository.ShapePointRepository;
 import mx.gtfsplatform.repository.StopRepository;
 import mx.gtfsplatform.repository.TripRepository;
-import org.locationtech.jts.geom.Coordinate;
-import org.locationtech.jts.geom.GeometryFactory;
-import org.locationtech.jts.geom.PrecisionModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Importar paradas y rutas desde archivos KML. Tres flujos:
- * 1) importStops: cada Placemark-Point del KML se convierte en una parada, nombrada por
- *    intersección más cercana — el mismo GeocodingProvider que usa el formulario manual
- *    de "nueva parada" en el mapa (sección 6), así que el resultado es indistinguible de
- *    si el usuario las hubiera creado a mano una por una.
+ * 1) startStopsImport: cada Placemark-Point del KML se convierte en una parada, nombrada
+ *    por intersección más cercana — el mismo GeocodingProvider que usa el formulario
+ *    manual de "nueva parada" en el mapa (sección 6). Corre en segundo plano (ver
+ *    KmlStopImportWorker): con archivos grandes, una llamada de geocoding por punto de
+ *    forma secuencial puede tardar varios minutos, y una sola petición HTTP tan larga es
+ *    frágil (una red local, Docker o proxy puede cortarla en silencio sin avisar al
+ *    navegador) — el cliente solo pide "arranca este import" y consulta el progreso aparte.
  * 2) importRouteAndMatch: el Placemark-LineString del KML (el más largo si hay varios) se
- *    guarda como shape de UN pattern ya existente, emparejando paradas por cercanía.
+ *    guarda como shape de UN pattern ya existente, emparejando paradas por cercanía. No
+ *    hace llamadas de geocoding (solo matemática local contra paradas ya existentes), así
+ *    que es rápido incluso con muchas paradas — se mantiene síncrono.
  * 3) importRoutesFromKml: variante para un KML con VARIAS rutas — crea una ruta + sentido
  *    nuevo por cada LineString del KML (usando el nombre del Placemark), en vez de
- *    limitarse al sentido que el usuario ya tenga abierto.
+ *    limitarse al sentido que el usuario ya tenga abierto. Tampoco geocodifica, síncrono.
  */
 @Service
 public class KmlImportService {
-
-    private static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), 4326);
 
     // Paleta simple para que las rutas creadas en lote no salgan todas del mismo color —
     // el usuario puede cambiarlo después desde "Editar ruta" igual que cualquier otra.
@@ -58,84 +58,58 @@ public class KmlImportService {
     private final StopRepository stopRepository;
     private final FeedVersionRepository feedVersionRepository;
     private final GtfsIdGenerator idGenerator;
-    private final GeocodingProvider geocodingProvider;
     private final AgencyRepository agencyRepository;
     private final RouteRepository routeRepository;
     private final RoutePatternRepository routePatternRepository;
     private final PatternStopRepository patternStopRepository;
     private final ShapePointRepository shapePointRepository;
     private final TripRepository tripRepository;
+    private final KmlStopImportJobRepository kmlStopImportJobRepository;
+    private final KmlStopImportWorker kmlStopImportWorker;
 
     public KmlImportService(StopRepository stopRepository, FeedVersionRepository feedVersionRepository,
-            GtfsIdGenerator idGenerator, GeocodingProvider geocodingProvider, AgencyRepository agencyRepository,
+            GtfsIdGenerator idGenerator, AgencyRepository agencyRepository,
             RouteRepository routeRepository, RoutePatternRepository routePatternRepository,
             PatternStopRepository patternStopRepository, ShapePointRepository shapePointRepository,
-            TripRepository tripRepository) {
+            TripRepository tripRepository, KmlStopImportJobRepository kmlStopImportJobRepository,
+            KmlStopImportWorker kmlStopImportWorker) {
         this.stopRepository = stopRepository;
         this.feedVersionRepository = feedVersionRepository;
         this.idGenerator = idGenerator;
-        this.geocodingProvider = geocodingProvider;
         this.agencyRepository = agencyRepository;
         this.routeRepository = routeRepository;
         this.routePatternRepository = routePatternRepository;
         this.patternStopRepository = patternStopRepository;
         this.shapePointRepository = shapePointRepository;
         this.tripRepository = tripRepository;
+        this.kmlStopImportJobRepository = kmlStopImportJobRepository;
+        this.kmlStopImportWorker = kmlStopImportWorker;
     }
 
-    @Transactional
-    public StopsImportResult importStops(UUID feedVersionId, InputStream kml) throws Exception {
+    /** Parsea el KML (rápido) y arranca el trabajo pesado en segundo plano; devuelve el jobId para hacer polling. */
+    public KmlStopImportJob startStopsImport(UUID feedVersionId, InputStream kml) throws Exception {
         FeedVersion feedVersion = feedVersionRepository.findById(feedVersionId)
                 .orElseThrow(() -> new NoSuchElementException("feed_version no encontrado: " + feedVersionId));
 
         List<KmlParser.KmlPoint> points = KmlParser.parsePoints(kml);
-        List<StopSummary> created = new ArrayList<>();
-        int geocoded = 0;
-        for (KmlParser.KmlPoint p : points) {
-            Optional<String> suggestion;
-            try {
-                suggestion = geocodingProvider.suggestStopName(p.lat(), p.lon());
-            } catch (RuntimeException e) {
-                // El proveedor de geocoding es best-effort (sección 6): si falla una
-                // consulta puntual, la parada se crea igual con un nombre de respaldo
-                // en vez de tirar todo el import por un punto problemático.
-                suggestion = Optional.empty();
-            }
-            String name;
-            boolean wasGeocoded;
-            if (suggestion.isPresent()) {
-                name = suggestion.get();
-                wasGeocoded = true;
-                geocoded++;
-            } else if (p.name() != null && !p.name().isBlank()) {
-                name = p.name();
-                wasGeocoded = false;
-            } else {
-                name = "Parada importada";
-                wasGeocoded = false;
-            }
 
-            Stop stop = new Stop();
-            stop.setFeedVersion(feedVersion);
-            stop.setGtfsId(idGenerator.next("stop", "STOP", feedVersionId, "feed_version_id"));
-            stop.setStopName(name);
-            stop.setGeom(GEOMETRY_FACTORY.createPoint(new Coordinate(p.lon(), p.lat())));
-            stop.setLocationType((short) 0);
-            stop.setWheelchairBoarding((short) 0);
-            stop.setRowVersion(0L);
-            OffsetDateTime now = OffsetDateTime.now();
-            stop.setCreatedAt(now);
-            stop.setUpdatedAt(now);
-            // saveAndFlush, no save: GtfsIdGenerator.next() cuenta filas con JDBC crudo
-            // fuera de la sesión de Hibernate — sin forzar el flush aquí, no ve el
-            // INSERT anterior (que Hibernate difiere hasta el commit) y le asigna el
-            // mismo gtfs_id a dos paradas seguidas, violando la unique constraint al
-            // hacer flush al final. Bug real detectado importando 3 puntos de un KML.
-            stop = stopRepository.saveAndFlush(stop);
+        KmlStopImportJob job = KmlStopImportJob.builder()
+                .feedVersion(feedVersion)
+                .status(KmlStopImportJob.Status.RUNNING.name())
+                .totalPoints(points.size())
+                .processedCount(0)
+                .geocodedCount(0)
+                .startedAt(OffsetDateTime.now())
+                .build();
+        job = kmlStopImportJobRepository.save(job);
 
-            created.add(new StopSummary(stop.getId().toString(), stop.getStopName(), p.lat(), p.lon(), wasGeocoded));
-        }
-        return new StopsImportResult(points.size(), geocoded, created);
+        kmlStopImportWorker.run(job.getId(), feedVersion, points);
+        return job;
+    }
+
+    public KmlStopImportJob getStopsImportJob(UUID jobId) {
+        return kmlStopImportJobRepository.findById(jobId)
+                .orElseThrow(() -> new NoSuchElementException("job de import no encontrado: " + jobId));
     }
 
     @Transactional
@@ -272,12 +246,6 @@ public class KmlImportService {
                         Math.round(c.distanceMeters() * 10) / 10.0))
                 .toList();
         return new PatternImportResult(shapePoints.size(), matchedSummaries.size(), matchRadiusMeters, matchedSummaries);
-    }
-
-    public record StopSummary(String id, String name, double lat, double lon, boolean geocoded) {
-    }
-
-    public record StopsImportResult(int totalPoints, int geocodedCount, List<StopSummary> stops) {
     }
 
     public record MatchedStopSummary(String id, String name, double distanceMeters) {

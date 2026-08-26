@@ -145,18 +145,13 @@ export interface PatternStop {
   stop: Stop;
 }
 
-export interface KmlStopSummary {
-  id: string;
-  name: string;
-  lat: number;
-  lon: number;
-  geocoded: boolean;
-}
-
-export interface KmlStopsImportResult {
+export interface StopImportJobStatus {
+  jobId: string;
+  status: 'RUNNING' | 'DONE' | 'FAILED';
   totalPoints: number;
+  processedCount: number;
   geocodedCount: number;
-  stops: KmlStopSummary[];
+  errorMessage: string | null;
 }
 
 export interface KmlMatchedStopSummary {
@@ -357,11 +352,12 @@ export const api = {
     importKml: (feedVersionId: string, file: File) => {
       const formData = new FormData();
       formData.append('file', file);
-      return request<KmlStopsImportResult>(`/feed-versions/${feedVersionId}/stops/import-kml`, {
+      return request<StopImportJobStatus>(`/feed-versions/${feedVersionId}/stops/import-kml`, {
         method: 'POST',
         body: formData as any,
       });
     },
+    getKmlImportJob: (jobId: string) => get<StopImportJobStatus>(`/stop-import-jobs/${jobId}`),
   },
   routes: {
     list: (feedVersionId: string) => get<Route[]>(`/feed-versions/${feedVersionId}/routes`),

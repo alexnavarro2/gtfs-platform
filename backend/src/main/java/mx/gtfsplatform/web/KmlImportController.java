@@ -2,7 +2,9 @@ package mx.gtfsplatform.web;
 
 import java.util.NoSuchElementException;
 import java.util.UUID;
+import mx.gtfsplatform.domain.KmlStopImportJob;
 import mx.gtfsplatform.gtfs.kml.KmlImportService;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -18,15 +20,36 @@ public class KmlImportController {
         this.kmlImportService = kmlImportService;
     }
 
+    public record StopImportJobStatus(
+            String jobId, String status, int totalPoints, int processedCount, int geocodedCount,
+            String errorMessage) {
+        static StopImportJobStatus of(KmlStopImportJob job) {
+            return new StopImportJobStatus(job.getId().toString(), job.getStatus(), job.getTotalPoints(),
+                    job.getProcessedCount(), job.getGeocodedCount(), job.getErrorMessage());
+        }
+    }
+
+    // Solo arranca el import y devuelve el jobId — el trabajo pesado (geocoding punto por
+    // punto) corre en segundo plano; el cliente hace polling con GET .../stop-import-jobs/{jobId}.
     @PostMapping("/api/v1/feed-versions/{feedVersionId}/stops/import-kml")
-    public KmlImportService.StopsImportResult importStops(
+    public StopImportJobStatus importStops(
             @PathVariable UUID feedVersionId, @RequestParam("file") MultipartFile file) {
         try {
-            return kmlImportService.importStops(feedVersionId, file.getInputStream());
+            KmlStopImportJob job = kmlImportService.startStopsImport(feedVersionId, file.getInputStream());
+            return StopImportJobStatus.of(job);
         } catch (NoSuchElementException e) {
             throw new ResourceNotFoundException(e.getMessage());
         } catch (Exception e) {
             throw new IllegalArgumentException("No se pudo leer el KML: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/api/v1/stop-import-jobs/{jobId}")
+    public StopImportJobStatus getStopsImportJob(@PathVariable UUID jobId) {
+        try {
+            return StopImportJobStatus.of(kmlImportService.getStopsImportJob(jobId));
+        } catch (NoSuchElementException e) {
+            throw new ResourceNotFoundException(e.getMessage());
         }
     }
 
