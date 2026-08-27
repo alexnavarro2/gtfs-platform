@@ -27,6 +27,10 @@ interface AppState {
   // que MapView puede detectar el cambio por referencia sin necesitar que
   // alguien la limpie después.
   boundsToFit: { minLat: number; maxLat: number; minLon: number; maxLon: number } | null;
+  // Punto al que el mapa debe volar (ej. doble clic en una parada de la lista) —
+  // igual que boundsToFit, cada llamada crea un objeto nuevo para que MapView
+  // detecte el cambio por referencia aunque sea la misma parada dos veces seguidas.
+  focusPoint: { lat: number; lon: number } | null;
   setFeed: (feedId: string, feedVersionId: string) => void;
   setAgency: (agencyId: string) => void;
   setActiveRoute: (routeId: string | null) => void;
@@ -39,6 +43,7 @@ interface AppState {
   clearDraftPatternStops: () => void;
   setRoutedPreview: (points: { lat: number; lon: number }[], info: { routed: boolean; provider: string } | null) => void;
   setBoundsToFit: (bounds: { minLat: number; maxLat: number; minLon: number; maxLon: number }) => void;
+  setFocusPoint: (point: { lat: number; lon: number }) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -87,6 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   routedPreviewPoints: [],
   routedPreviewInfo: null,
   boundsToFit: null,
+  focusPoint: null,
   setFeed: (feedId, feedVersionId) =>
     set({
       feedId,
@@ -129,4 +135,5 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearDraftPatternStops: () => set({ draftPatternStopIds: [], routedPreviewPoints: [], routedPreviewInfo: null }),
   setRoutedPreview: (points, info) => set({ routedPreviewPoints: points, routedPreviewInfo: info }),
   setBoundsToFit: (bounds) => set({ boundsToFit: bounds }),
+  setFocusPoint: (point) => set({ focusPoint: point }),
 }));

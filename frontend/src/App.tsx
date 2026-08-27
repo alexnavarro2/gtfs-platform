@@ -704,6 +704,7 @@ function MapArea({
   const routedPreviewInfo = useAppStore((s) => s.routedPreviewInfo);
   const setRoutedPreview = useAppStore((s) => s.setRoutedPreview);
   const boundsToFit = useAppStore((s) => s.boundsToFit);
+  const focusPoint = useAppStore((s) => s.focusPoint);
   const [pendingStopLatLon, setPendingStopLatLon] = useState<{ lat: number; lon: number } | null>(null);
   const [routing, setRouting] = useState(false);
 
@@ -790,6 +791,7 @@ function MapArea({
         onMapClick={handleMapClick}
         onStopClick={handleStopClick}
         focusBounds={boundsToFit}
+        focusPoint={focusPoint}
       />
       <div className="attribution-badge">{attribution || '© OpenStreetMap contributors'}</div>
       {((mapTool === 'add-pattern-stop' && draftPatternStopIds.length >= 2) ||
@@ -1012,6 +1014,7 @@ function KmlStopsImportSection({ feedVersionId }: { feedVersionId: string }) {
 function StopsPanel({ feedVersionId }: { feedVersionId: string }) {
   const mapTool = useAppStore((s) => s.mapTool);
   const setMapTool = useAppStore((s) => s.setMapTool);
+  const setFocusPoint = useAppStore((s) => s.setFocusPoint);
   const queryClient = useQueryClient();
   const stopsQuery = useQuery({ queryKey: ['stops', feedVersionId], queryFn: () => api.stops.list(feedVersionId) });
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -1051,7 +1054,13 @@ function StopsPanel({ feedVersionId }: { feedVersionId: string }) {
         <h3>Paradas ({stopsQuery.data?.length || 0})</h3>
         {deleteError && <div className="notice ERROR">{deleteError}</div>}
         {(stopsQuery.data || []).map((s) => (
-          <div className="list-item" key={s.id}>
+          <div
+            className="list-item"
+            key={s.id}
+            title="Doble clic para ubicarla en el mapa"
+            style={{ cursor: 'pointer' }}
+            onDoubleClick={() => setFocusPoint({ lat: s.stopLat, lon: s.stopLon })}
+          >
             <span>{s.stopName || '(sin nombre)'} <span style={{ color: '#999' }}>· {s.gtfsId}</span></span>
             <button
               className="btn danger icon-btn"
