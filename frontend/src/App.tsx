@@ -1088,7 +1088,7 @@ function StopsPanel({ feedVersionId }: { feedVersionId: string }) {
 function KmlRoutesImportSection({ feedVersionId, agencyId }: { feedVersionId: string; agencyId: string }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
-  const [radius, setRadius] = useState(40);
+  const [radius, setRadius] = useState(20);
   const [result, setResult] = useState<KmlBulkRoutesImportResult | null>(null);
 
   const importMutation = useMutation({
@@ -1105,8 +1105,10 @@ function KmlRoutesImportSection({ feedVersionId, agencyId }: { feedVersionId: st
       <h3>Importar varias rutas desde KML</h3>
       <p className="hint">
         Si tu KML trae una línea por cada ruta (un Placemark-LineString por ruta), se crea una ruta y un sentido
-        nuevo por cada una — usando el nombre del Placemark como nombre de la ruta — y se le emparejan las paradas
-        del feed que caigan cerca. Importa primero las paradas en la pestaña "Paradas".
+        nuevo por cada una — usando el nombre del Placemark como nombre de la ruta. El trazo se pega a la red vial
+        real (igual que "Agregar paradas") en vez de guardarse tal cual venía en el KML, y se le emparejan las
+        paradas del feed que caigan cerca y del lado derecho del sentido de avance — nunca del lado contrario, aunque
+        estén más cerca. Importa primero las paradas en la pestaña "Paradas".
       </p>
       <div className="field-row">
         <div className="field">
@@ -1134,6 +1136,7 @@ function KmlRoutesImportSection({ feedVersionId, agencyId }: { feedVersionId: st
               <li key={r.routeId}>
                 {r.routeName} — {r.pattern.matchedStopCount} parada{r.pattern.matchedStopCount === 1 ? '' : 's'}{' '}
                 emparejada{r.pattern.matchedStopCount === 1 ? '' : 's'}
+                {' '}· {r.pattern.matchedToRoadNetwork ? '✓ pegado a la calle' : '⚠ sin pegar a la calle (se usó el trazo del KML)'}
               </li>
             ))}
           </ul>
@@ -1391,7 +1394,7 @@ function PatternsPanel({ route }: { route: Route }) {
 function KmlPatternImportSection({ patternId }: { patternId: string }) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
-  const [radius, setRadius] = useState(40);
+  const [radius, setRadius] = useState(20);
   const [result, setResult] = useState<KmlPatternImportResult | null>(null);
 
   const invalidate = () => {
@@ -1425,9 +1428,10 @@ function KmlPatternImportSection({ patternId }: { patternId: string }) {
     <div className="panel-section" style={{ marginTop: 10 }}>
       <h3>Importar recorrido desde KML</h3>
       <p className="hint">
-        El trazo (LineString) del KML se guarda como el recorrido, y las paradas del feed que caigan cerca de la
-        línea se suman al recorrido en el orden en que aparecen a lo largo de ella — primero importa las paradas en
-        la pestaña "Paradas" si todavía no existen.
+        El trazo (LineString) del KML se pega a la red vial real (igual que "Agregar paradas") y se guarda como el
+        recorrido, y las paradas del feed que caigan cerca y del lado derecho del sentido de avance se suman en el
+        orden en que aparecen a lo largo de la línea — nunca se toman paradas del lado contrario, aunque estén más
+        cerca. Primero importa las paradas en la pestaña "Paradas" si todavía no existen.
       </p>
       <div className="field-row">
         <div className="field">
@@ -1445,8 +1449,9 @@ function KmlPatternImportSection({ patternId }: { patternId: string }) {
       </button>
       {result && (
         <div className="notice INFO" style={{ marginTop: 6 }}>
-          Trazo con {result.shapePointCount} puntos · {result.matchedStopCount} parada
-          {result.matchedStopCount === 1 ? '' : 's'} emparejada{result.matchedStopCount === 1 ? '' : 's'} (radio{' '}
+          Trazo con {result.shapePointCount} puntos ({result.matchedToRoadNetwork ? '✓ pegado a la calle' : '⚠ sin pegar a la calle, se usó el trazo del KML'})
+          {' '}· {result.matchedStopCount} parada
+          {result.matchedStopCount === 1 ? '' : 's'} emparejada{result.matchedStopCount === 1 ? '' : 's'} del lado derecho (radio{' '}
           {result.matchRadiusMeters}m)
           {result.matchedStops.length > 0 && (
             <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>

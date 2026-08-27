@@ -58,7 +58,7 @@ public class KmlImportController {
     public KmlImportService.PatternImportResult importRoute(
             @PathVariable UUID patternId,
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "matchRadiusMeters", defaultValue = "40") double matchRadiusMeters) {
+            @RequestParam(value = "matchRadiusMeters", defaultValue = "20") double matchRadiusMeters) {
         try {
             return kmlImportService.importRouteAndMatch(patternId, file.getInputStream(), matchRadiusMeters);
         } catch (NoSuchElementException e) {
@@ -77,7 +77,7 @@ public class KmlImportController {
             @PathVariable UUID feedVersionId,
             @RequestParam("agencyId") UUID agencyId,
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "matchRadiusMeters", defaultValue = "40") double matchRadiusMeters) {
+            @RequestParam(value = "matchRadiusMeters", defaultValue = "20") double matchRadiusMeters) {
         try {
             return kmlImportService.importRoutesFromKml(feedVersionId, agencyId, file.getInputStream(), matchRadiusMeters);
         } catch (NoSuchElementException e) {

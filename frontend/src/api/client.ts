@@ -169,6 +169,7 @@ export interface KmlPatternImportResult {
   matchedStopCount: number;
   matchRadiusMeters: number;
   matchedStops: KmlMatchedStopSummary[];
+  matchedToRoadNetwork: boolean;
 }
 
 export interface KmlRouteImportResult {

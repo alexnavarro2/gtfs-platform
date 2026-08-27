@@ -26,6 +26,7 @@ import mx.gtfsplatform.repository.RouteRepository;
 import mx.gtfsplatform.repository.ShapePointRepository;
 import mx.gtfsplatform.repository.StopRepository;
 import mx.gtfsplatform.repository.TripRepository;
+import mx.gtfsplatform.routing.RoutingProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,13 +67,14 @@ public class KmlImportService {
     private final TripRepository tripRepository;
     private final KmlStopImportJobRepository kmlStopImportJobRepository;
     private final KmlStopImportWorker kmlStopImportWorker;
+    private final RoutingProvider routingProvider;
 
     public KmlImportService(StopRepository stopRepository, FeedVersionRepository feedVersionRepository,
             GtfsIdGenerator idGenerator, AgencyRepository agencyRepository,
             RouteRepository routeRepository, RoutePatternRepository routePatternRepository,
             PatternStopRepository patternStopRepository, ShapePointRepository shapePointRepository,
             TripRepository tripRepository, KmlStopImportJobRepository kmlStopImportJobRepository,
-            KmlStopImportWorker kmlStopImportWorker) {
+            KmlStopImportWorker kmlStopImportWorker, RoutingProvider routingProvider) {
         this.stopRepository = stopRepository;
         this.feedVersionRepository = feedVersionRepository;
         this.idGenerator = idGenerator;
@@ -84,6 +86,7 @@ public class KmlImportService {
         this.tripRepository = tripRepository;
         this.kmlStopImportJobRepository = kmlStopImportJobRepository;
         this.kmlStopImportWorker = kmlStopImportWorker;
+        this.routingProvider = routingProvider;
     }
 
     /** Parsea el KML (rápido) y arranca el trabajo pesado en segundo plano; devuelve el jobId para hacer polling. */
@@ -186,8 +189,33 @@ public class KmlImportService {
 
     /** Guarda el trazo de una línea KML como shape del pattern y le empareja paradas cercanas. */
     private PatternImportResult applyLineToPattern(
-            RoutePattern pattern, UUID feedVersionId, KmlParser.KmlLine line, double matchRadiusMeters) {
+            RoutePattern pattern, UUID feedVersionId, KmlParser.KmlLine kmlLine, double matchRadiusMeters) {
         UUID routePatternId = pattern.getId();
+
+        // El trazo del KML rara vez cae exacto sobre la calle (se dibujó a mano en
+        // Google Earth/QGIS, o viene de un GPS impreciso) — antes se guardaba tal
+        // cual, así que el shape final se veía "flotando" cerca de la calle en vez
+        // de sobre ella. Se pega a la red vial real con el mismo motor OSRM que ya
+        // usa "Dibujar"/"Agregar paradas"; si falla o no hay proveedor configurado,
+        // se sigue con el trazo del KML sin pegar (nunca rompe el import).
+        boolean matchedToRoadNetwork = false;
+        KmlParser.KmlLine line = kmlLine;
+        List<RoutingProvider.Waypoint> waypoints = new ArrayList<>();
+        for (int i = 0; i < kmlLine.lats().length; i++) {
+            waypoints.add(new RoutingProvider.Waypoint(kmlLine.lats()[i], kmlLine.lons()[i]));
+        }
+        RoutingProvider.RouteGeometry matched = routingProvider.match(waypoints);
+        if (matched.routed() && matched.pointsLatLon().size() >= 2) {
+            double[] matchedLats = new double[matched.pointsLatLon().size()];
+            double[] matchedLons = new double[matched.pointsLatLon().size()];
+            for (int i = 0; i < matched.pointsLatLon().size(); i++) {
+                matchedLats[i] = matched.pointsLatLon().get(i)[0];
+                matchedLons[i] = matched.pointsLatLon().get(i)[1];
+            }
+            line = new KmlParser.KmlLine(kmlLine.name(), matchedLats, matchedLons);
+            matchedToRoadNetwork = true;
+        }
+
         double[] cumulative = GeoUtils.cumulativeDistancesMeters(line.lats(), line.lons());
 
         record Candidate(Stop stop, double alongMeters, double distanceMeters) {
@@ -196,7 +224,11 @@ public class KmlImportService {
         for (Stop stop : stopRepository.findByFeedVersionId(feedVersionId)) {
             GeoUtils.Projection proj = GeoUtils.projectPointOntoPolyline(
                     stop.getStopLat(), stop.getStopLon(), line.lats(), line.lons());
-            if (proj.distanceMeters() <= matchRadiusMeters) {
+            // Solo del lado derecho del sentido de avance del trazo (sección "Importar
+            // rutas desde KML") — con tránsito por la derecha, un camión únicamente
+            // recoge de ese lado; sin este filtro, una avenida de dos sentidos mezclaba
+            // paradas de IDA y REGRESO que estaban a metros de diferencia entre sí.
+            if (proj.distanceMeters() <= matchRadiusMeters && proj.rightOfTravel()) {
                 candidates.add(new Candidate(stop, GeoUtils.distanceAlongPolylineMeters(proj, cumulative),
                         proj.distanceMeters()));
             }
@@ -245,14 +277,16 @@ public class KmlImportService {
                 .map(c -> new MatchedStopSummary(c.stop().getId().toString(), c.stop().getStopName(),
                         Math.round(c.distanceMeters() * 10) / 10.0))
                 .toList();
-        return new PatternImportResult(shapePoints.size(), matchedSummaries.size(), matchRadiusMeters, matchedSummaries);
+        return new PatternImportResult(
+                shapePoints.size(), matchedSummaries.size(), matchRadiusMeters, matchedSummaries, matchedToRoadNetwork);
     }
 
     public record MatchedStopSummary(String id, String name, double distanceMeters) {
     }
 
     public record PatternImportResult(
-            int shapePointCount, int matchedStopCount, double matchRadiusMeters, List<MatchedStopSummary> matchedStops) {
+            int shapePointCount, int matchedStopCount, double matchRadiusMeters, List<MatchedStopSummary> matchedStops,
+            boolean matchedToRoadNetwork) {
     }
 
     public record RouteImportResult(

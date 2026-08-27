@@ -13,6 +13,15 @@ public class ManualRoutingProvider implements RoutingProvider {
 
     @Override
     public RouteGeometry route(List<Waypoint> waypoints, RoutingProfile profile) {
+        return passthrough(waypoints);
+    }
+
+    @Override
+    public RouteGeometry match(List<Waypoint> points) {
+        return passthrough(points);
+    }
+
+    private RouteGeometry passthrough(List<Waypoint> waypoints) {
         List<double[]> points = new ArrayList<>();
         for (Waypoint w : waypoints) {
             points.add(new double[]{w.lat(), w.lon()});

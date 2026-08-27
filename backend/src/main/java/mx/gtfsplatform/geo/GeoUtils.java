@@ -81,7 +81,15 @@ public final class GeoUtils {
         return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
     }
 
-    public record Projection(int segmentIndex, double t, double distanceMeters) {
+    /**
+     * rightOfTravel: de qué lado del sentido de avance del segmento (a→b) cae el punto —
+     * true = derecha, false = izquierda. Se usa para el emparejado de paradas del import
+     * de KML (sección "Importar rutas desde KML"): con tránsito por la derecha, un
+     * camión solo recoge del lado derecho de SU sentido, así que un buffer de solo
+     * distancia (sin esto) mezclaba paradas de IDA y REGRESO en avenidas de dos
+     * sentidos, aunque estuvieran a metros de diferencia entre sí.
+     */
+    public record Projection(int segmentIndex, double t, double distanceMeters, boolean rightOfTravel) {
     }
 
     /**
@@ -99,6 +107,7 @@ public final class GeoUtils {
         int bestSegment = 0;
         double bestT = 0;
         double bestDist = Double.MAX_VALUE;
+        boolean bestRightOfTravel = true;
         for (int i = 0; i < lats.length - 1; i++) {
             Coordinate a = toLocalMeters(lats[i], lons[i], refLat, cosLat);
             Coordinate b = toLocalMeters(lats[i + 1], lons[i + 1], refLat, cosLat);
@@ -113,9 +122,16 @@ public final class GeoUtils {
                 bestDist = d;
                 bestSegment = i;
                 bestT = t;
+                // Producto cruzado del vector de avance (a→b, SIN recortar por t) contra
+                // el vector al punto (a→p): en este plano x=este/y=norte, negativo cae a
+                // la derecha del sentido de avance. Se usa el vector sin recortar (no el
+                // "proj" ya recortado a [0,1]) para que el lado siga siendo correcto
+                // incluso cuando el punto más cercano cae en la punta del segmento.
+                double cross = dx * (p.y - a.y) - dy * (p.x - a.x);
+                bestRightOfTravel = cross < 0;
             }
         }
-        return new Projection(bestSegment, bestT, lats.length < 2 ? 0 : bestDist);
+        return new Projection(bestSegment, bestT, lats.length < 2 ? 0 : bestDist, bestRightOfTravel);
     }
 
     public static double distanceAlongPolylineMeters(Projection projection, double[] cumulative) {
