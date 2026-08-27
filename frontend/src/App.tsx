@@ -1323,6 +1323,19 @@ function PatternsPanel({ route }: { route: Route }) {
   const patternsQuery = useQuery({ queryKey: ['patterns', route.id], queryFn: () => api.patterns.list(route.id) });
   const [form, setForm] = useState({ name: 'IDA', directionId: 0, tripHeadsign: '' });
 
+  // Sin esto, elegir una ruta solo mostraba su formulario de edición — había que
+  // además clicar su sentido para que el recorrido apareciera en el mapa, un paso
+  // extra nada obvio (bug real: tras importar rutas desde KML, cada una trae un
+  // solo sentido, y el usuario no veía ningún trazo hasta encontrar ese clic).
+  useEffect(() => {
+    const patterns = patternsQuery.data;
+    if (!patterns || patterns.length === 0) return;
+    if (!activePatternId || !patterns.some((p) => p.id === activePatternId)) {
+      setActivePattern(patterns[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patternsQuery.data, route.id]);
+
   const createPattern = useMutation({
     mutationFn: () => api.patterns.create(route.id, form),
     onSuccess: (p) => {
