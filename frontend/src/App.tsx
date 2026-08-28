@@ -1474,6 +1474,7 @@ function PatternEditor({ patternId }: { patternId: string }) {
   const setMapTool = useAppStore((s) => s.setMapTool);
   const draftShapePoints = useAppStore((s) => s.draftShapePoints);
   const clearDraftShapePoints = useAppStore((s) => s.clearDraftShapePoints);
+  const removeLastDraftShapePoint = useAppStore((s) => s.removeLastDraftShapePoint);
   const draftPatternStopIds = useAppStore((s) => s.draftPatternStopIds);
   const clearDraftPatternStops = useAppStore((s) => s.clearDraftPatternStops);
   const routedPreviewPoints = useAppStore((s) => s.routedPreviewPoints);
@@ -1594,6 +1595,9 @@ function PatternEditor({ patternId }: { patternId: string }) {
             </p>
           )}
           <div className="btn-row">
+            <button className="btn secondary" disabled={draftShapePoints.length === 0} onClick={removeLastDraftShapePoint}>
+              ↩ Borrar último punto
+            </button>
             <button className="btn secondary" onClick={clearDraftShapePoints}>Limpiar</button>
             <button className="btn" disabled={draftShapePoints.length < 2 || saveShape.isPending} onClick={() => saveShape.mutate()}>
               {saveShape.isPending ? 'Guardando…' : 'Guardar recorrido'}

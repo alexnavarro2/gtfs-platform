@@ -38,6 +38,7 @@ interface AppState {
   setActiveCalendar: (calendarId: string | null) => void;
   setMapTool: (tool: MapTool) => void;
   addDraftShapePoint: (pt: { lat: number; lon: number }) => void;
+  removeLastDraftShapePoint: () => void;
   clearDraftShapePoints: () => void;
   toggleDraftPatternStop: (stopId: string) => void;
   clearDraftPatternStops: () => void;
@@ -123,6 +124,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveCalendar: (calendarId) => set({ activeCalendarId: calendarId }),
   setMapTool: (tool) => set({ mapTool: tool }),
   addDraftShapePoint: (pt) => set({ draftShapePoints: [...get().draftShapePoints, pt] }),
+  // Quita solo el último punto de control en vez de tener que "Limpiar" y volver a
+  // dibujar todo el trazo por un clic equivocado al final — el efecto que rutea
+  // draftShapePoints por la red vial (MapArea) reacciona solo al nuevo arreglo.
+  removeLastDraftShapePoint: () => set({ draftShapePoints: get().draftShapePoints.slice(0, -1) }),
   clearDraftShapePoints: () => set({ draftShapePoints: [], routedPreviewPoints: [], routedPreviewInfo: null }),
   toggleDraftPatternStop: (stopId) => {
     const current = get().draftPatternStopIds;
