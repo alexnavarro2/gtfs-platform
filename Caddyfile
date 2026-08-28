@@ -1,0 +1,14 @@
+# Caddy sirve como reverse proxy único: HTTPS automático (Let's Encrypt) sobre
+# {$APP_DOMAIN}, y reparte tráfico a los dos contenedores internos según la ruta —
+# /api/* al backend, todo lo demás al frontend. Con esto el navegador solo ve un
+# origen (https://{$APP_DOMAIN}), así que no hace falta configurar CORS en el
+# backend ni exponer sus puertos al público: db y backend solo son alcanzables
+# dentro de la red interna de docker compose (ver docker-compose.prod.yml).
+{$APP_DOMAIN} {
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+	handle {
+		reverse_proxy frontend:80
+	}
+}

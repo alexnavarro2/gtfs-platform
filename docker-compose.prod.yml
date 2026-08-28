@@ -1,0 +1,90 @@
+# Despliegue de producción (piloto con usuarios reales). Diferencias clave contra
+# docker-compose.yml (uso local):
+#   - Agrega el servicio "caddy": único punto expuesto al público (80/443), con
+#     HTTPS automático — db y backend ya NO publican sus puertos al host, solo
+#     son alcanzables dentro de la red interna de docker compose.
+#   - No trae valores por defecto para contraseñas/secretos: si faltan en .env,
+#     docker compose falla en vez de arrancar con el default de desarrollo.
+#
+# Uso: cp .env.production.example .env, edítalo, y luego:
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: gtfsplatform-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gtfsplatform}
+      POSTGRES_USER: ${POSTGRES_USER:-gtfsplatform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
+    volumes:
+      - gtfsplatform-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gtfsplatform} -d ${POSTGRES_DB:-gtfsplatform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: gtfsplatform-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-gtfsplatform}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-gtfsplatform}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
+      GTFSPLATFORM_MAP_TILE_URL: ${GTFSPLATFORM_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+      GTFSPLATFORM_ROUTING_PROVIDER: ${GTFSPLATFORM_ROUTING_PROVIDER:-osrm}
+      GTFSPLATFORM_OSRM_URL: ${GTFSPLATFORM_OSRM_URL:-https://router.project-osrm.org}
+      GTFSPLATFORM_GEOCODING_PROVIDER: ${GTFSPLATFORM_GEOCODING_PROVIDER:-esri}
+      GTFSPLATFORM_OVERPASS_URL: ${GTFSPLATFORM_OVERPASS_URL:-https://overpass-api.de/api/interpreter}
+      GTFSPLATFORM_GEOCODING_RADIUS_M: ${GTFSPLATFORM_GEOCODING_RADIUS_M:-35}
+      GTFSPLATFORM_ESRI_API_KEY: ${GTFSPLATFORM_ESRI_API_KEY:-}
+      GTFSPLATFORM_JWT_SECRET: "${GTFSPLATFORM_JWT_SECRET:?Falta GTFSPLATFORM_JWT_SECRET en .env, genera uno con openssl rand -base64 48}"
+      GTFSPLATFORM_JWT_EXPIRATION_HOURS: ${GTFSPLATFORM_JWT_EXPIRATION_HOURS:-168}
+    volumes:
+      - gtfsplatform-exports:/data/exports
+    # Sin "ports": no se expone al host, solo Caddy lo alcanza vía la red interna
+    # de docker compose (nombre de servicio "backend", puerto 8080).
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: https://${APP_DOMAIN:?Falta APP_DOMAIN en .env}/api/v1
+        VITE_MAP_TILE_URL: ${GTFSPLATFORM_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+    container_name: gtfsplatform-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # Tampoco expone puerto al host — Caddy lo alcanza como "frontend:80".
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: gtfsplatform-caddy
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Falta APP_DOMAIN en .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - gtfsplatform-caddy-data:/data
+      - gtfsplatform-caddy-config:/config
+
+volumes:
+  gtfsplatform-db-data:
+  gtfsplatform-exports:
+  gtfsplatform-caddy-data:
+  gtfsplatform-caddy-config:
