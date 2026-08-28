@@ -15,3 +15,7 @@ frontend/.vite/
 .idea/
 .vscode/
 *.iml
+
+# Segunda versión del stack (NestJS + Angular, pedida por IMTES) — repo de git
+# aparte, no forma parte del historial de este (Java/Spring Boot + React).
+gtfs-platform-node/
