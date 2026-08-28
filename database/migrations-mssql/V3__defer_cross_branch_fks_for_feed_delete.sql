@@ -1,0 +1,22 @@
+-- La versión Postgres de esta migración vuelve 11 FKs "DEFERRABLE INITIALLY
+-- DEFERRED" porque, al borrar un feed completo (DELETE en cascada desde
+-- feed_version hacia varias ramas hermanas: agency/stop/route/route_pattern/
+-- trip/pattern_stop/...), Postgres valida cada FK de inmediato — así que si
+-- borraba la fila referenciada por una FK cruzada entre ramas (ej. route.
+-- agency_id -> agency) antes que la fila que la referencia, la transacción
+-- entera fallaba con 23503 aunque ambas iban a terminar borradas de todas
+-- formas.
+--
+-- SQL Server no tiene el equivalente de constraints diferibles — pero
+-- tampoco lo necesita: probado directamente (SQL Server 2022, contenedor
+-- Docker local) con una réplica mínima del patrón real de este esquema
+-- (tabla padre -> dos tablas hijas con ON DELETE CASCADE, una de las hijas
+-- con una FK normal —no cascada— hacia la otra), borrar la tabla padre
+-- se resuelve limpio, sin violación de FK transitoria. El motor de cascada
+-- de SQL Server calcula el plan de borrado completo antes de aplicarlo, no
+-- valida fila por fila como Postgres por default.
+--
+-- Por eso esta migración no hace nada — se deja el archivo (en vez de
+-- borrarlo) para que el historial de versiones quede alineado con el de
+-- Postgres y cualquiera que compare ambas carpetas entienda por qué falta
+-- el DDL correspondiente aquí.

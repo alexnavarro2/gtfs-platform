@@ -848,7 +848,7 @@ function StopQuickForm({
   const [nearby, setNearby] = useState<Stop[]>([]);
 
   useEffect(() => {
-    api.stops.near(lat, lon, 60).then(setNearby).catch(() => {});
+    api.stops.near(feedVersionId, lat, lon, 60).then(setNearby).catch(() => {});
     setSuggesting(true);
     api.geocoding
       .suggestStopName(lat, lon)

@@ -11,13 +11,23 @@ spring:
     open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
+        # PostgreSQL (default) o SQL Server — nunca el dialecto "...spatial.dialect.*"
+        # específico (esos quedaron deprecados); con el dialecto genérico de cada
+        # motor, hibernate-spatial detecta solo cuál usar y le agrega soporte de
+        # tipos espaciales (mismo mecanismo para ambos, confirmado en los logs de
+        # arranque: "adding type contributions from: ...PostgisDialectContributor"
+        # / "...SqlServerDialectContributor" según el dialecto activo). Para SQL
+        # Server: GTFSPLATFORM_HIBERNATE_DIALECT=org.hibernate.dialect.SQLServerDialect
+        dialect: ${GTFSPLATFORM_HIBERNATE_DIALECT:org.hibernate.dialect.PostgreSQLDialect}
         format_sql: false
   servlet:
     multipart:
       max-file-size: 200MB
       max-request-size: 200MB
   flyway:
+    # Postgres (default) usa database/migrations; para SQL Server, apuntar a
+    # database/migrations-mssql (mismo contenido, reescrito en T-SQL — ver el
+    # comentario de cabecera de esa carpeta).
     locations: ${GTFSPLATFORM_FLYWAY_LOCATIONS:filesystem:/app/database/migrations}
     baseline-on-migrate: true
 

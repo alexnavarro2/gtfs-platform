@@ -31,12 +31,20 @@ public class GtfsIdGenerator {
                 Integer.class, scopeId);
         int n = (count == null ? 0 : count) + 1;
         String candidate = prefix + "_" + String.format("%05d", n);
-        while (Boolean.TRUE.equals(jdbcTemplate.queryForObject(
-                "SELECT EXISTS(SELECT 1 FROM " + table + " WHERE " + scopeColumn + " = ? AND " + idColumn + " = ?)",
-                Boolean.class, scopeId, candidate))) {
+        // COUNT(*) > 0 en vez de "SELECT EXISTS(...)": ese es válido en Postgres
+        // (devuelve un booleano) pero no es sintaxis T-SQL válida en SQL Server —
+        // COUNT funciona igual en ambos motores.
+        while (existsCount(table, scopeColumn, scopeId, idColumn, candidate) > 0) {
             n++;
             candidate = prefix + "_" + String.format("%05d", n);
         }
         return candidate;
+    }
+
+    private int existsCount(String table, String scopeColumn, UUID scopeId, String idColumn, String candidate) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM " + table + " WHERE " + scopeColumn + " = ? AND " + idColumn + " = ?",
+                Integer.class, scopeId, candidate);
+        return count == null ? 0 : count;
     }
 }

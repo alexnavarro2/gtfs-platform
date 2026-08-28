@@ -352,8 +352,8 @@ export const api = {
     create: (feedVersionId: string, body: Partial<Stop>) => post<Stop>(`/feed-versions/${feedVersionId}/stops`, body),
     update: (id: string, body: Partial<Stop>) => put<Stop>(`/stops/${id}`, body),
     remove: (id: string) => del<void>(`/stops/${id}`),
-    near: (lat: number, lon: number, radiusMeters: number) =>
-      get<Stop[]>(`/stops/near?lat=${lat}&lon=${lon}&radiusMeters=${radiusMeters}`),
+    near: (feedVersionId: string, lat: number, lon: number, radiusMeters: number) =>
+      get<Stop[]>(`/feed-versions/${feedVersionId}/stops/near?lat=${lat}&lon=${lon}&radiusMeters=${radiusMeters}`),
     importKml: (feedVersionId: string, file: File) => {
       const formData = new FormData();
       formData.append('file', file);

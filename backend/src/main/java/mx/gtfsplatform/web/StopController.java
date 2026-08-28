@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 import mx.gtfsplatform.domain.FeedVersion;
 import mx.gtfsplatform.domain.Stop;
+import mx.gtfsplatform.geo.GeoUtils;
 import mx.gtfsplatform.gtfs.GtfsIdGenerator;
 import mx.gtfsplatform.repository.FeedVersionRepository;
 import mx.gtfsplatform.repository.StopRepository;
@@ -124,10 +125,16 @@ public class StopController {
         stopRepository.deleteById(id);
     }
 
-    @GetMapping("/api/v1/stops/near")
-    public List<Stop> near(@RequestParam double lat, @RequestParam double lon,
+    // Antes buscaba "cerca de aquí" en TODAS las paradas de la base, de cualquier
+    // feed — un descuido real que se corrige de paso al quitar la dependencia de
+    // PostGIS: ahora exige feedVersionId y solo compara contra las paradas de ESE
+    // feed, igual que el resto de los endpoints de esta clase.
+    @GetMapping("/api/v1/feed-versions/{feedVersionId}/stops/near")
+    public List<Stop> near(@PathVariable UUID feedVersionId, @RequestParam double lat, @RequestParam double lon,
                             @RequestParam double radiusMeters) {
-        return stopRepository.findNear(lat, lon, radiusMeters);
+        return stopRepository.findByFeedVersionId(feedVersionId).stream()
+                .filter(s -> GeoUtils.haversineMeters(s.getStopLat(), s.getStopLon(), lat, lon) <= radiusMeters)
+                .toList();
     }
 
     private static Point toPoint(Double lat, Double lon) {
